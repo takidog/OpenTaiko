@@ -44,6 +44,48 @@ internal sealed record PreviewRequest(
 internal sealed record RestartRequest(
 	[property: JsonPropertyName("historyId")] Guid? HistoryId);
 
+internal sealed record HealthDto(
+	[property: JsonPropertyName("status")] string Status,
+	[property: JsonPropertyName("version")] string Version,
+	[property: JsonPropertyName("songIndexReady")] bool SongIndexReady);
+
+internal sealed record GameStateDto(
+	[property: JsonPropertyName("stage")] string Stage,
+	[property: JsonPropertyName("songId")] string? SongId,
+	[property: JsonPropertyName("difficulty")] ApiDifficulty? Difficulty,
+	[property: JsonPropertyName("playerCount")] int PlayerCount);
+
+internal sealed record SongPageDto(
+	[property: JsonPropertyName("items")] IReadOnlyList<SongDto> Items,
+	[property: JsonPropertyName("page")] int Page,
+	[property: JsonPropertyName("pageSize")] int PageSize,
+	[property: JsonPropertyName("total")] int Total);
+
+internal sealed record PlayHistoryEntryDto(
+	[property: JsonPropertyName("historyId")] Guid HistoryId,
+	[property: JsonPropertyName("songId")] string SongId,
+	[property: JsonPropertyName("difficulty")] ApiDifficulty Difficulty,
+	[property: JsonPropertyName("saveSlot")] int SaveSlot,
+	[property: JsonPropertyName("playerCount")] int PlayerCount,
+	[property: JsonPropertyName("playerSide")] string PlayerSide,
+	[property: JsonPropertyName("startedAtUtc")] DateTimeOffset StartedAtUtc,
+	[property: JsonPropertyName("completedAtUtc")] DateTimeOffset? CompletedAtUtc,
+	[property: JsonPropertyName("status")] string Status,
+	[property: JsonPropertyName("modifiers")] IReadOnlyDictionary<string, JsonElement> Modifiers);
+
+internal sealed record SongQuery(
+	string? Query,
+	string? Genre,
+	ApiDifficulty? Difficulty,
+	int? MinimumLevel,
+	int? MaximumLevel,
+	int Page,
+	int PageSize);
+
+internal sealed record CommandAcceptedDto(
+	[property: JsonPropertyName("commandId")] Guid CommandId,
+	[property: JsonPropertyName("status")] RemoteCommandStatus Status);
+
 internal sealed record ApiErrorBody(
 	[property: JsonPropertyName("error")] ApiError Error);
 
@@ -55,7 +97,7 @@ internal sealed record ApiError(
 internal static class RemoteControlJson {
 	public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web) {
 		PropertyNameCaseInsensitive = false,
-		Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+		Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false) },
 	};
 }
 
