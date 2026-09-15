@@ -55,9 +55,18 @@
     <section id="playlist-panel" class="tab-panel" hidden>
       <div class="section-title">
         <div><p class="eyebrow">MY LIST</p><h2>自選播放清單</h2></div>
-        <span>依加入順序排列</span>
+        <span>可拖曳歌曲調整順序</span>
       </div>
-      <p id="playlist-empty" class="empty">還沒有歌曲，請從「選取歌曲」加入。</p>
+      <div class="playlist-toolbar card">
+        <select id="playlist-select" aria-label="選擇播放清單"></select>
+        <button id="playlist-create">新增</button>
+        <button id="playlist-rename" class="secondary">重新命名</button>
+        <button id="playlist-delete" class="danger">刪除</button>
+        <button id="playlist-export" class="secondary">匯出 JSON</button>
+        <label class="button-label secondary">匯入 JSON<input id="playlist-import" type="file" accept="application/json,.json" hidden></label>
+      </div>
+      <p id="playlist-none" class="empty" hidden>目前沒有播放清單，請按「新增」。</p>
+      <p id="playlist-empty" class="empty">這個清單還沒有歌曲，請從「選取歌曲」加入。</p>
       <div id="playlist" class="song-grid"></div>
     </section>
 
@@ -84,6 +93,14 @@
       </div>
     </article>
   </template>
+  <dialog id="playlist-dialog">
+    <form method="dialog" class="dialog-card card">
+      <div class="dialog-head"><div><p class="eyebrow">PLAYLISTS</p><h2>加入播放清單</h2></div><button value="close" class="icon-button" aria-label="關閉">×</button></div>
+      <strong id="playlist-dialog-song"></strong>
+      <div id="playlist-dialog-options" class="playlist-options"></div>
+      <button id="playlist-dialog-create" type="button">新增播放清單</button>
+    </form>
+  </dialog>
   <div id="toast" role="status" aria-live="polite"></div>
   <script src="/app.js" defer></script>
 </body>

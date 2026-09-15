@@ -24,10 +24,12 @@ h1,h2,h3,p { margin:0; } h1 { font-size:clamp(2rem,5vw,4.5rem); letter-spacing:-
 input,select,button { font:inherit; border-radius:11px; border:1px solid var(--line); padding:12px 14px; color:var(--ink); background:#111117; }
 button { border:0; background:var(--accent); font-weight:800; cursor:pointer; } button:hover { filter:brightness(1.12); } button:disabled { opacity:.4; cursor:not-allowed; }
 button.secondary { background:#292932; } button.danger { color:#ffad9f; background:#342326; }
+.button-label { display:inline-flex; align-items:center; justify-content:center; border-radius:11px; padding:12px 14px; font-weight:800; cursor:pointer; background:#292932; }
 .check { display:flex; align-items:center; gap:8px; min-width:max-content; color:var(--muted); padding:0 6px; }
 .check input { width:18px; height:18px; accent-color:var(--accent); }
 .song-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
 .song { padding:18px; display:grid; align-content:start; gap:15px; }
+.song[draggable="true"] { cursor:grab; } .song.dragging { opacity:.45; }
 .song-head { display:flex; align-items:start; justify-content:space-between; gap:12px; }
 .song-copy { min-width:0; } .song h3 { font-size:1.2rem; margin:3px 0 5px; overflow-wrap:anywhere; }
 .genre { color:var(--accent2); font-size:.7rem; font-weight:800; text-transform:uppercase; letter-spacing:.1em; }
@@ -48,12 +50,22 @@ button.secondary { background:#292932; } button.danger { color:#ffad9f; backgrou
 .badge { display:inline-flex; align-items:center; width:max-content; border-radius:99px; padding:4px 8px; font-size:.68rem; font-weight:800; }
 .genre-badge { color:var(--accent2); background:#3a321c; }
 .playlist-badge { color:#94d8ff; background:#1c3442; }
+.playlist-badges { display:contents; }
 .history-actions { display:grid; grid-template-columns:repeat(3,max-content); gap:8px; }
+.playlist-toolbar { display:grid; grid-template-columns:minmax(190px,1fr) repeat(5,max-content); gap:8px; padding:12px; margin-bottom:14px; }
+dialog { width:min(520px,calc(100% - 24px)); padding:0; border:0; background:transparent; color:var(--ink); }
+dialog::backdrop { background:#000b; backdrop-filter:blur(4px); }
+.dialog-card { padding:22px; display:grid; gap:18px; }
+.dialog-head { display:flex; justify-content:space-between; align-items:start; }
+.playlist-options { display:grid; gap:8px; max-height:45vh; overflow:auto; }
+.playlist-option { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:10px; padding:12px; border:1px solid var(--line); border-radius:11px; }
+.playlist-option input { width:19px; height:19px; accent-color:var(--accent); }
+.playlist-option span { color:var(--muted); font-size:.75rem; }
 .empty { color:var(--muted); padding:30px 10px; text-align:center; border:1px dashed var(--line); border-radius:14px; }
 .error { color:#ff9b8b; padding:12px 0; }
 #load-more { display:block; margin:18px auto; }
 #toast { position:fixed; z-index:20; right:20px; bottom:20px; max-width:calc(100% - 40px); padding:12px 16px; border-radius:10px; background:#f4efe5; color:#19171b; opacity:0; transform:translateY(10px); transition:.2s; pointer-events:none; }
 #toast.show { opacity:1; transform:none; }
-@media (max-width:900px) { .now-playing { grid-template-columns:1fr 1fr; } .now-playing>div:nth-child(2) { border-right:0; } .filters { grid-template-columns:1fr 1fr 1fr; } #query { grid-column:1/-1; } }
+@media (max-width:900px) { .now-playing { grid-template-columns:1fr 1fr; } .now-playing>div:nth-child(2) { border-right:0; } .filters { grid-template-columns:1fr 1fr 1fr; } #query { grid-column:1/-1; } .playlist-toolbar { grid-template-columns:1fr 1fr 1fr; } .playlist-toolbar select { grid-column:1/-1; } }
 @media (max-width:720px) { header,main { width:min(100% - 20px,1180px); } header { padding-top:22px; } .now-playing { grid-template-columns:1fr; } .now-playing>div { border-right:0; border-bottom:1px solid var(--line); } .filters { grid-template-columns:1fr 1fr; } #query { grid-column:1/-1; } .check { min-height:44px; } .song-grid { grid-template-columns:1fr; } .actions button { min-height:48px; } .history-item { grid-template-columns:1fr; } .history-actions { grid-template-columns:1fr 1fr 1fr; } }
-@media (max-width:440px) { .preview-actions { grid-template-columns:1fr; } }
+@media (max-width:440px) { .preview-actions { grid-template-columns:1fr; } .playlist-toolbar { grid-template-columns:1fr 1fr; } }
