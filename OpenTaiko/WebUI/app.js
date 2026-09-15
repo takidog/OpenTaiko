@@ -3,6 +3,7 @@ const ids = ["connection","stage","current-song","players","song-count","playlis
 const ui = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
 let page = 1, total = 0, loading = false, debounce, toastTimer;
 const songsById = new Map();
+const playlistSongIds = new Set();
 
 async function request(path, options) {
   const response = await fetch(api + path, options);
@@ -69,7 +70,7 @@ function songCard(song, mode = "catalog") {
   card.querySelector(".genre").textContent = song.genre || "OTHER";
   card.querySelector(".meta").textContent = [song.subtitle, song.maker].filter(Boolean).join(" · ") || song.breadcrumb;
   const favorite = card.querySelector(".favorite");
-  renderFavorite(favorite, song.favorite);
+  bindFavorite(favorite, song);
 
   let selected = song.difficulties.find(d => d.id === ui.difficulty.value && d.available)
     || song.difficulties.find(d => d.id === "oni" && d.available)
@@ -85,15 +86,6 @@ function songCard(song, mode = "catalog") {
     holder.append(button);
   });
 
-  favorite.onclick = async () => {
-    const next = !song.favorite;
-    if (await command("/favorite", { songId: song.id, favorite: next })) {
-      song.favorite = next; songsById.set(song.id, song); renderFavorite(favorite, next);
-      document.querySelectorAll(`.song[data-song-id="${CSS.escape(song.id)}"] .favorite`).forEach(button => renderFavorite(button, next));
-      toast(next ? "已加入最愛" : "已移除最愛");
-      if (ui["favorite-only"].checked && !next) loadSongs(true);
-    }
-  };
   const webPreview = card.querySelector(".web-preview");
   webPreview.disabled = !song.webPreviewAvailable;
   webPreview.title = song.webPreviewAvailable ? "只在此網頁播放，不切換遊戲" : "此歌曲沒有可用音訊";
@@ -112,8 +104,27 @@ function songCard(song, mode = "catalog") {
   return card;
 }
 
+function bindFavorite(button, song) {
+  button.dataset.songId = song.id;
+  renderFavorite(button, song.favorite);
+  button.onclick = async () => {
+    const current = songsById.get(song.id) || song;
+    const next = !current.favorite;
+    button.disabled = true;
+    if (await command("/favorite", { songId: song.id, favorite: next })) {
+      song.favorite = next; current.favorite = next; songsById.set(song.id, current);
+      document.querySelectorAll(".favorite").forEach(candidate => {
+        if (candidate.dataset.songId === song.id) renderFavorite(candidate, next);
+      });
+      toast(next ? "已加入最愛" : "已移除最愛");
+      if (ui["favorite-only"].checked && !next) loadSongs(true);
+    }
+    button.disabled = false;
+  };
+}
+
 function renderFavorite(button, active) {
-  button.textContent = active ? "★" : "☆";
+  button.textContent = active ? "♥" : "♡";
   button.classList.toggle("active", active);
   button.title = active ? "移除最愛" : "加入最愛";
   button.setAttribute("aria-label", button.title);
@@ -161,22 +172,41 @@ async function loadPlaylist() {
 
 function renderPlaylist(items) {
   ui.playlist.replaceChildren();
+  playlistSongIds.clear();
+  items.forEach(song => playlistSongIds.add(song.id));
   items.forEach(song => { songsById.set(song.id, song); ui.playlist.append(songCard(song, "playlist")); });
   ui["playlist-count"].textContent = items.length;
   ui["playlist-empty"].hidden = items.length > 0;
+  document.querySelectorAll(".playlist-badge").forEach(badge => { badge.hidden = !playlistSongIds.has(badge.dataset.songId); });
 }
 
 async function loadHistory() {
   try {
     const entries = await request("/history?limit=100"); ui.history.replaceChildren();
     if (!entries.length) { ui.history.innerHTML = '<p class="empty">尚無遊玩紀錄。</p>'; return; }
+    const missingIds = [...new Set(entries.map(entry => entry.songId).filter(id => !songsById.has(id)))];
+    await Promise.all(missingIds.map(async id => {
+      try { songsById.set(id, await request(songPath(id))); } catch { /* Song may have been removed. */ }
+    }));
     entries.forEach(entry => {
       const row = document.createElement("div"); row.className = "history-item";
-      const copy = document.createElement("div"), title = document.createElement("strong"), detail = document.createElement("small"), play = document.createElement("button");
-      title.textContent = songsById.get(entry.songId)?.title || entry.songId;
+      row.dataset.songId = entry.songId;
+      const song = songsById.get(entry.songId);
+      const copy = document.createElement("div"), heading = document.createElement("div"), title = document.createElement("strong"), detail = document.createElement("small"), badges = document.createElement("div"), actions = document.createElement("div");
+      copy.className = "history-copy"; heading.className = "history-heading"; badges.className = "badges"; actions.className = "history-actions";
+      title.textContent = song?.title || entry.songId;
       detail.textContent = `${entry.difficulty.toUpperCase()} · ${new Date(entry.startedAtUtc).toLocaleString()}`;
-      copy.append(title, detail); play.textContent = "再玩一次"; play.onclick = () => command(`/history/${entry.historyId}/play`, {});
-      row.append(copy, play); ui.history.append(row);
+      if (song?.genre) { const genre = document.createElement("span"); genre.className = "badge genre-badge"; genre.textContent = song.genre; badges.append(genre); }
+      const playlistBadge = document.createElement("span"); playlistBadge.className = "badge playlist-badge"; playlistBadge.dataset.songId = entry.songId; playlistBadge.textContent = "自選播放清單"; playlistBadge.hidden = !playlistSongIds.has(entry.songId); badges.append(playlistBadge);
+      heading.append(title);
+      if (song) { const favorite = document.createElement("button"); favorite.type = "button"; favorite.className = "favorite icon-button history-heart"; bindFavorite(favorite, song); heading.append(favorite); }
+      copy.append(heading, badges, detail);
+
+      const webPreview = document.createElement("button"); webPreview.className = "secondary"; webPreview.textContent = "網頁試聽"; webPreview.disabled = !song?.webPreviewAvailable; webPreview.onclick = () => song && playInBrowser(song);
+      const gamePreview = document.createElement("button"); gamePreview.className = "secondary"; gamePreview.textContent = "遊戲 Preview"; gamePreview.disabled = !song; gamePreview.onclick = () => command("/preview", { songId: entry.songId });
+      const play = document.createElement("button"); play.textContent = "再玩一次"; play.onclick = () => command(`/history/${entry.historyId}/play`, {});
+      actions.append(webPreview, gamePreview, play);
+      row.append(copy, actions); ui.history.append(row);
     });
   } catch { /* History is optional while the game starts. */ }
 }

@@ -58,7 +58,7 @@ When enabled, open `http://127.0.0.1:2354/`. The JSON API base URL is `http://12
 
 `GET /songs` supports `query`, `genre`, `difficulty`, `minLevel`, `maxLevel`, `favorite`, `page`, and `pageSize`. Page size defaults to 100 and is limited to 500. Difficulty values are `easy`, `normal`, `hard`, `oni`, `ura`, `tower`, and `dan`.
 
-The quick-selection page separates the catalog, custom playlist, and recent plays into tabs. "Web preview" plays audio only in the browser. "Game Preview" sends `/preview`, moves the in-game song selection immediately, and uses OpenTaiko's normal preview playback. Favorites are stored in the game's existing `Favorite.json`; the custom playlist is stored in `RemotePlaylist.json` next to the executable.
+The quick-selection page separates the catalog, custom playlist, and recent plays into tabs. Recent plays show category and playlist badges, favorite state, and both preview actions. "Web preview" plays audio only in the browser. "Game Preview" sends `/preview`, moves the in-game song selection immediately, and uses OpenTaiko's normal preview playback. Favorites are stored in the game's existing `Favorite.json`; the custom playlist is stored in `RemotePlaylist.json` next to the executable.
 
 POST bodies use UTF-8 `application/json`. Accepted commands return HTTP 202 with a `commandId`; poll the command endpoint or subscribe to SSE for completion. Commands are rejected with `GAME_BUSY` while OpenTaiko is outside the idle song-selection stage.
 
