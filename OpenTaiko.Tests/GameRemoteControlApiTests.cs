@@ -8,6 +8,7 @@ public sealed class GameRemoteControlApiTests {
 		using TempDirectory temp = new();
 		RemoteCommandQueue queue = new();
 		GameRemoteControlApi api = new("test", queue, new PlayHistoryService(temp.File("history.json")));
+		api.UpdateState(new GameStateDto("SongSelect", null, null, 1));
 		api.ReplaceCatalog(new SongCatalogSnapshot(new[] { Song("song", ApiDifficulty.Oni) }));
 		ApiRouter router = new(api);
 
@@ -30,6 +31,7 @@ public sealed class GameRemoteControlApiTests {
 		PlayHistoryService history = new(temp.File("history.json"));
 		PlayHistoryEntryDto entry = history.Start("song", ApiDifficulty.Ura, 1, 1, "left")!;
 		GameRemoteControlApi api = new("test", queue, history);
+		api.UpdateState(new GameStateDto("SongSelect", null, null, 1));
 		api.ReplaceCatalog(new SongCatalogSnapshot(new[] { Song("song", ApiDifficulty.Ura) }));
 		ApiRouter router = new(api);
 
@@ -39,6 +41,19 @@ public sealed class GameRemoteControlApiTests {
 		Assert.Equal(202, valid.StatusCode);
 		Assert.Equal(404, missing.StatusCode);
 		Assert.Contains(ApiErrorCodes.HistoryNotFound, missing.BodyText);
+	}
+
+	[Fact]
+	public void CommandsReturnConflictWhileGameIsBusy() {
+		using TempDirectory temp = new();
+		GameRemoteControlApi api = new("test", new RemoteCommandQueue(), new PlayHistoryService(temp.File("history.json")));
+		api.ReplaceCatalog(new SongCatalogSnapshot(new[] { Song("song", ApiDifficulty.Oni) }));
+		api.UpdateState(new GameStateDto("Game", "song", ApiDifficulty.Oni, 1));
+
+		ApiResponse response = new ApiRouter(api).Route(Post("/api/v1/play", """{"songId":"song","difficulty":"oni"}"""));
+
+		Assert.Equal(409, response.StatusCode);
+		Assert.Contains(ApiErrorCodes.GameBusy, response.BodyText);
 	}
 
 	private static ApiRequest Post(string path, string body)

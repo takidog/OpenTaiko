@@ -11,6 +11,7 @@ internal sealed class PlayHistoryService {
 	private readonly Func<DateTimeOffset> utcNow;
 	private readonly Func<Guid> newId;
 	private List<PlayHistoryEntryDto> entries = new();
+	public event Action<PlayHistoryEntryDto>? HistoryChanged;
 
 	public PlayHistoryService(
 		string filePath,
@@ -58,6 +59,7 @@ internal sealed class PlayHistoryService {
 			this.Trim();
 			this.Save();
 		}
+		this.HistoryChanged?.Invoke(entry);
 		return entry;
 	}
 
@@ -67,6 +69,7 @@ internal sealed class PlayHistoryService {
 			throw new ArgumentException("Unsupported completion status.", nameof(status));
 		}
 
+		PlayHistoryEntryDto completed;
 		lock (this.syncRoot) {
 			int index = this.entries.FindIndex(entry => entry.HistoryId == historyId);
 			if (index < 0) return false;
@@ -75,14 +78,16 @@ internal sealed class PlayHistoryService {
 			if (result is not null) {
 				foreach ((string key, JsonElement value) in result) merged[key] = value.Clone();
 			}
-			this.entries[index] = current with {
+			completed = current with {
 				CompletedAtUtc = this.utcNow(),
 				Status = status,
 				Modifiers = new ReadOnlyDictionary<string, JsonElement>(merged),
 			};
+			this.entries[index] = completed;
 			this.Save();
-			return true;
 		}
+		this.HistoryChanged?.Invoke(completed);
+		return true;
 	}
 
 	public PlayHistoryEntryDto? Get(Guid historyId) {

@@ -79,6 +79,10 @@ OpenTaiko许可不适用于这类情况。
 
 - **重要**：类似于“请按照（此处插入任意商业游戏名称）重建用户界面与体验”的请求会被直接否决，不会得到回答。
 
+## 遠端控制
+
+可選用的本機 HTTP API、快速選曲介面與設定方式請參閱 [Remote Control API v1](OpenTaiko/Documentation/RemoteControl.md)。
+
 ## 贡献者名单
 
 > * [Takkkom/主要OpenTaiko功能（1080P支持、AI对战模式、5玩家模式等）](https://github.com/Takkkom)

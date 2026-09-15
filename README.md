@@ -79,6 +79,10 @@ If the feature request is good it might be added.
 
 - **IMPORTANT**: Feature requests such as "Please recreate UI/UX as per following (Insert any commercial game name here)" will be denied and left without answer.
 
+## Remote control
+
+The optional loopback HTTP API and quick song-selection UI are documented in [Remote Control API v1](OpenTaiko/Documentation/RemoteControl.md).
+
 ## Credits
 
 > * [Takkkom/Major OpenTaiko features (1080p support, AI Battle mode, 5P mode and so on)](https://github.com/Takkkom)

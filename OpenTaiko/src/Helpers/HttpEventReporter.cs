@@ -10,14 +10,18 @@ namespace OpenTaiko;
 /// <summary>
 /// Reports game events over HTTP in real time.
 /// </summary>
-internal class HttpEventReporter(string host, int port, ApiRouter? apiRouter = null) {
+internal class HttpEventReporter(
+    string host,
+    int port,
+    ApiRouter? apiRouter = null,
+    StaticFileHandler? staticFileHandler = null) {
     public string host { get; private set; } = host;
     public int port { get; private set; } = port;
 
     public bool started { get; private set; } = false;
 
     private HttpListener? _listener;
-    private readonly List<HttpListenerResponse> _clients = new();
+    private readonly List<EventClient> _clients = new();
     private readonly object _lockObj = new();
     private Dictionary<int, Dictionary<int, int>> _noteOrdinalMappingByPlayer = new();
 
@@ -62,7 +66,7 @@ internal class HttpEventReporter(string host, int port, ApiRouter? apiRouter = n
             this._listener = null;
             lock (this._lockObj) {
                 foreach (var client in this._clients) {
-                    try { client.Close(); } catch { }
+                    try { client.Response.Close(); } catch { }
                 }
                 this._clients.Clear();
             }
@@ -72,11 +76,26 @@ internal class HttpEventReporter(string host, int port, ApiRouter? apiRouter = n
 
     private async Task HandleClientAsync(HttpListenerContext context) {
         string path = context.Request.Url?.AbsolutePath ?? "/";
-        if (path != "/" && path != "/api/v1/events") {
+        bool eventStream = path == "/api/v1/events"
+            || (path == "/" && (staticFileHandler is null || context.Request.AcceptTypes?.Contains("text/event-stream") == true));
+        if (eventStream) {
+            this.HandleEventStream(context, path == "/");
+            return;
+        }
+        if (!path.StartsWith("/api/", StringComparison.Ordinal) && staticFileHandler is not null) {
+            await WriteResponseAsync(context.Response, staticFileHandler.Route(context.Request.HttpMethod, path));
+            return;
+        }
+        if (path != "/") {
             await this.HandleApiRequestAsync(context, path);
             return;
         }
 
+		context.Response.StatusCode = 404;
+		context.Response.Close();
+    }
+
+	private void HandleEventStream(HttpListenerContext context, bool legacyGameEvents) {
         HttpListenerResponse response = context.Response;
         response.ContentType = "text/event-stream";
         response.Headers.Add("Cache-Control", "no-cache");
@@ -94,7 +113,7 @@ internal class HttpEventReporter(string host, int port, ApiRouter? apiRouter = n
         }
 
         lock (this._lockObj) {
-            this._clients.Add(response);
+            this._clients.Add(new EventClient(response, legacyGameEvents));
         }
         Trace.TraceInformation("[HttpEventReporter] Client connected.");
     }
@@ -113,17 +132,20 @@ internal class HttpEventReporter(string host, int port, ApiRouter? apiRouter = n
             context.Request.Url?.Query,
             context.Request.ContentType,
             body));
-        HttpListenerResponse response = context.Response;
-        response.StatusCode = apiResponse.StatusCode;
-        response.ContentType = apiResponse.ContentType;
-        response.ContentEncoding = Encoding.UTF8;
-        response.ContentLength64 = apiResponse.Body.Length;
-        try {
-            await response.OutputStream.WriteAsync(apiResponse.Body);
-        } finally {
-            response.Close();
-        }
+        await WriteResponseAsync(context.Response, apiResponse);
     }
+
+	private static async Task WriteResponseAsync(HttpListenerResponse response, ApiResponse apiResponse) {
+		response.StatusCode = apiResponse.StatusCode;
+		response.ContentType = apiResponse.ContentType;
+		response.ContentEncoding = Encoding.UTF8;
+		response.ContentLength64 = apiResponse.Body.Length;
+		try {
+			await response.OutputStream.WriteAsync(apiResponse.Body);
+		} finally {
+			response.Close();
+		}
+	}
 
     private static async Task<byte[]> ReadRequestBodyAsync(HttpListenerRequest request) {
         if (!request.HasEntityBody) return Array.Empty<byte>();
@@ -158,7 +180,7 @@ internal class HttpEventReporter(string host, int port, ApiRouter? apiRouter = n
             msDelta,
             noteChar = NotesManager.ToNoteChar(noteType),
             noteOrdinalByChar
-        });
+        }, legacyOnly: true);
     }
 
     // Explicitly state known cases so that the event format is stable against future enum changes.
@@ -198,8 +220,12 @@ internal class HttpEventReporter(string host, int port, ApiRouter? apiRouter = n
         this.Broadcast(new {
             type = "gameplay_start",
 			tjaSummaries
-		});
+		}, legacyOnly: true);
     }
+
+	public void ReportRemoteControlEvent(string type, object data) {
+		this.Broadcast(new { type, data });
+	}
 
     private void BuildNoteOrdinalMapping(int player, CTja tja) {
         Dictionary<int, int> mappingForPlayer = new();
@@ -214,19 +240,20 @@ internal class HttpEventReporter(string host, int port, ApiRouter? apiRouter = n
         List<CChip> noteChips = tja.listNoteChip;
     }
 
-    private void Broadcast(object data) {
+    private void Broadcast(object data, bool legacyOnly = false) {
         try {
-            string json = JsonSerializer.Serialize(data);
+            string json = JsonSerializer.Serialize(data, RemoteControlJson.Options);
             string eventString = $"data: {json}\n\n";
             byte[] buffer = Encoding.UTF8.GetBytes(eventString);
 
             lock (this._lockObj) {
                 for (int i = this._clients.Count - 1; i >= 0; i--) {
+                    if (legacyOnly && !this._clients[i].LegacyGameEvents) continue;
                     try {
-                        this._clients[i].OutputStream.Write(buffer, 0, buffer.Length);
-                        this._clients[i].OutputStream.Flush();
+                        this._clients[i].Response.OutputStream.Write(buffer, 0, buffer.Length);
+                        this._clients[i].Response.OutputStream.Flush();
                     } catch {
-                        try { this._clients[i].Close(); } catch { } 
+                        try { this._clients[i].Response.Close(); } catch { }
                         this._clients.RemoveAt(i);
                     }
                 }
@@ -235,4 +262,6 @@ internal class HttpEventReporter(string host, int port, ApiRouter? apiRouter = n
             Trace.TraceError($"[HttpEventReporter] Broadcast error: {ex.Message}");
         }
     }
+
+	private sealed record EventClient(HttpListenerResponse Response, bool LegacyGameEvents);
 }

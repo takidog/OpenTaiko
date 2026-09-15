@@ -36,6 +36,9 @@ internal sealed class GameRemoteControlApi : IRemoteControlApi {
 	public bool TryGetCommand(Guid commandId, out RemoteCommandResult? result) => this.commands.TryGetResult(commandId, out result);
 
 	public RemoteCommandResult Enqueue<TPayload>(RemoteCommandType type, TPayload payload) {
+		if (!this.GetState().Stage.Equals("SongSelect", StringComparison.OrdinalIgnoreCase)) {
+			throw new ApiRouteException(409, ApiErrorCodes.GameBusy, "OpenTaiko is not currently at song selection.");
+		}
 		this.Validate(type, payload);
 		return this.commands.Enqueue(type, payload);
 	}

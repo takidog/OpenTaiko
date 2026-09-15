@@ -1505,6 +1505,7 @@ internal class OpenTaiko : Game {
 	public List<CActivity> listTopLevelActivities;
 	private int nDrawLoopReturnValue;
 	private int remoteCatalogSongCount = -1;
+	private GameStateDto? lastRemoteState;
 	private string strWindowTitle
 	// ayo komi isn't this useless code? - tfd500
 	{
@@ -1908,9 +1909,23 @@ internal class OpenTaiko : Game {
 		ApiRouter? apiRouter = ConfigIni.RemoteControlEnabled && RemoteControlApi is not null
 			? new ApiRouter(RemoteControlApi)
 			: null;
-		OpenTaiko.HttpEventReporter = new HttpEventReporter("127.0.0.1", httpPort, apiRouter);
+		StaticFileHandler? staticFiles = ConfigIni.RemoteControlEnabled && ConfigIni.ServeWebUI
+			? new StaticFileHandler(Path.Combine(strEXEのあるフォルダ, "WebUI"))
+			: null;
+		OpenTaiko.HttpEventReporter = new HttpEventReporter("127.0.0.1", httpPort, apiRouter, staticFiles);
+		if (RemoteControlApi is not null) {
+			RemoteControlApi.Commands.CommandChanged += result => HttpEventReporter?.ReportRemoteControlEvent("command", result);
+			RemoteControlApi.History.HistoryChanged += entry => HttpEventReporter?.ReportRemoteControlEvent("history", entry);
+		}
 		if (OpenTaiko.ConfigIni.bEnableGameEventBroadcasting || ConfigIni.RemoteControlEnabled)
 			OpenTaiko.HttpEventReporter.StartListening();
+		if (ConfigIni.RemoteControlEnabled && ConfigIni.OpenWebUIOnStartup && OpenTaiko.HttpEventReporter.started) {
+			try {
+				Process.Start(new ProcessStartInfo($"http://127.0.0.1:{httpPort}/") { UseShellExecute = true });
+			} catch (Exception exception) {
+				Trace.TraceWarning($"Unable to open the remote control UI: {exception.Message}");
+			}
+		}
 
 		Trace.TraceInformation("Application successfully started.");
 
@@ -1932,11 +1947,16 @@ internal class OpenTaiko : Game {
 		if (selected is not null && SongMount.nCurrentSongDifficulty is >= 0 and < (int)Difficulty.Total) {
 			difficulty = ApiDifficultyMapper.FromGameDifficulty((Difficulty)SongMount.nCurrentSongDifficulty);
 		}
-		api.UpdateState(new GameStateDto(
+		GameStateDto state = new(
 			rCurrentStage?.eStageID.ToString() ?? "None",
 			selected?.tGetUniqueId(),
 			difficulty,
-			ConfigIni.nPlayerCount));
+			ConfigIni.nPlayerCount);
+		api.UpdateState(state);
+		if (state != this.lastRemoteState) {
+			HttpEventReporter?.ReportRemoteControlEvent("state", state);
+			this.lastRemoteState = state;
+		}
 
 		if (EnumSongs?.IsSongListEnumCompletelyDone == true) {
 			int songCount = CSongDict.tGetNodesCount();

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenTaiko 快速選曲</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header>
+    <div>
+      <p class="eyebrow">OPEN TAIKO · REMOTE</p>
+      <h1>快速選曲</h1>
+    </div>
+    <div id="connection" class="pill offline">連線中…</div>
+  </header>
+
+  <main>
+    <section class="now-playing card">
+      <div><span>目前畫面</span><strong id="stage">—</strong></div>
+      <div><span>目前選曲</span><strong id="current-song">尚未選擇</strong></div>
+      <div><span>玩家</span><strong id="players">—</strong><button id="stop-preview" class="secondary compact">停止試聽</button></div>
+    </section>
+
+    <section class="catalog">
+      <div class="section-title">
+        <div><p class="eyebrow">CATALOG</p><h2>歌曲</h2></div>
+        <span id="song-count">0 首</span>
+      </div>
+      <form id="filters" class="filters">
+        <input id="query" type="search" placeholder="搜尋標題、作者或資料夾" autocomplete="off">
+        <select id="difficulty" aria-label="難度">
+          <option value="">所有難度</option><option value="easy">Easy</option><option value="normal">Normal</option>
+          <option value="hard">Hard</option><option value="oni">Oni</option><option value="ura">Ura</option>
+          <option value="tower">Tower</option><option value="dan">Dan</option>
+        </select>
+        <input id="genre" type="text" placeholder="曲風" aria-label="曲風">
+        <input id="min-level" type="number" min="1" max="99" placeholder="最低★" aria-label="最低星數">
+        <input id="max-level" type="number" min="1" max="99" placeholder="最高★" aria-label="最高星數">
+      </form>
+      <div id="error" class="error" hidden></div>
+      <div id="songs" class="song-grid" aria-live="polite"></div>
+      <button id="load-more" class="secondary" hidden>載入更多</button>
+    </section>
+
+    <section class="history">
+      <div class="section-title"><div><p class="eyebrow">RECENT</p><h2>最近遊玩</h2></div></div>
+      <div id="history" class="history-list"></div>
+    </section>
+  </main>
+
+  <template id="song-template">
+    <article class="song card">
+      <div class="song-copy"><span class="genre"></span><h3></h3><p class="meta"></p></div>
+      <div class="difficulties"></div>
+      <div class="actions"><button class="preview secondary">試聽</button><button class="select secondary">選取</button><button class="play">開始</button></div>
+    </article>
+  </template>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

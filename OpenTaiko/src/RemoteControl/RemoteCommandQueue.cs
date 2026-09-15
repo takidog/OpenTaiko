@@ -53,6 +53,7 @@ internal sealed class RemoteCommandQueue {
 	private readonly ConcurrentQueue<RemoteCommand> pending = new();
 	private readonly ConcurrentDictionary<Guid, RemoteCommandResult> results = new();
 	private readonly Func<DateTimeOffset> utcNow;
+	public event Action<RemoteCommandResult>? CommandChanged;
 
 	public RemoteCommandQueue(Func<DateTimeOffset>? utcNow = null) {
 		this.utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
@@ -74,6 +75,7 @@ internal sealed class RemoteCommandQueue {
 
 		this.results[command.CommandId] = result;
 		this.pending.Enqueue(command);
+		this.CommandChanged?.Invoke(result);
 		return result;
 	}
 
@@ -113,7 +115,7 @@ internal sealed class RemoteCommandQueue {
 		RemoteCommandStatus status,
 		string? errorCode = null,
 		string? errorMessage = null) {
-		this.results[command.CommandId] = new RemoteCommandResult(
+		RemoteCommandResult result = new(
 			command.CommandId,
 			command.Type,
 			status,
@@ -121,5 +123,7 @@ internal sealed class RemoteCommandQueue {
 			this.utcNow(),
 			errorCode,
 			errorMessage);
+		this.results[command.CommandId] = result;
+		this.CommandChanged?.Invoke(result);
 	}
 }
