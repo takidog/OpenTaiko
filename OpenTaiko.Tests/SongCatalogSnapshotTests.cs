@@ -70,6 +70,32 @@ public sealed class SongCatalogSnapshotTests {
 		}
 	}
 
+	[Fact]
+	public void SnapshotListsGenresFiltersFavoritesAndServesPreviewAudio() {
+		string directory = Path.Combine(Path.GetTempPath(), $"opentaiko-preview-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(directory);
+		string uniqueIdPath = Path.Combine(directory, "uniqueID.json");
+		string audioPath = Path.Combine(directory, "preview.ogg");
+		File.WriteAllBytes(audioPath, new byte[] { 10, 20, 30 });
+		try {
+			CSongListNode node = SongNode(uniqueIdPath, "favorite-song", "Preview", "Anime", 8, Difficulty.Oni);
+			node.score[(int)Difficulty.Oni].ファイル情報.フォルダの絶対パス = directory;
+			node.score[(int)Difficulty.Oni].譜面情報.strBGMファイル名 = "preview.ogg";
+			SongCatalogSnapshot snapshot = SongCatalogSnapshot.FromSongNodes(new[] { node }, _ => true);
+
+			Assert.Equal(new[] { "Anime" }, snapshot.GetGenres());
+			Assert.Single(snapshot.Search(new SongQuery(null, null, null, null, null, 1, 10, true)).Items);
+			Assert.Empty(snapshot.Search(new SongQuery(null, null, null, null, null, 1, 10, false)).Items);
+			SongDto song = Assert.IsType<SongDto>(snapshot.GetSong("favorite-song"));
+			Assert.True(song.WebPreviewAvailable);
+			SongAudioDto audio = Assert.IsType<SongAudioDto>(snapshot.GetPreviewAudio("favorite-song"));
+			Assert.Equal("audio/ogg", audio.ContentType);
+			Assert.Equal(new byte[] { 10, 20, 30 }, audio.Content);
+		} finally {
+			Directory.Delete(directory, true);
+		}
+	}
+
 	private static CSongListNode SongNode(
 		string uniqueIdPath,
 		string id,

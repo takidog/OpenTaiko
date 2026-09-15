@@ -1505,6 +1505,7 @@ internal class OpenTaiko : Game {
 	public List<CActivity> listTopLevelActivities;
 	private int nDrawLoopReturnValue;
 	private int remoteCatalogSongCount = -1;
+	private int remoteCatalogSaveFile = -1;
 	private GameStateDto? lastRemoteState;
 	private string strWindowTitle
 	// ayo komi isn't this useless code? - tfd500
@@ -1863,8 +1864,9 @@ internal class OpenTaiko : Game {
 			new PlayHistoryService(
 				Path.Combine(strEXEのあるフォルダ, "PlayHistory.json"),
 				ConfigIni.PlayHistoryEnabled,
-				ConfigIni.PlayHistoryMaxEntries));
-		RemoteSelectionService = new SongSelectionService(RemoteControlApi.History);
+				ConfigIni.PlayHistoryMaxEntries),
+			new PlaylistService(Path.Combine(strEXEのあるフォルダ, "RemotePlaylist.json")));
+		RemoteSelectionService = new SongSelectionService(RemoteControlApi);
 
 		this.listTopLevelActivities.Add(actEnumSongs);
 		this.listTopLevelActivities.Add(actTextConsole);
@@ -1960,12 +1962,13 @@ internal class OpenTaiko : Game {
 
 		if (EnumSongs?.IsSongListEnumCompletelyDone == true) {
 			int songCount = CSongDict.tGetNodesCount();
-			if (songCount != this.remoteCatalogSongCount) {
+			if (songCount != this.remoteCatalogSongCount || SaveFile != this.remoteCatalogSaveFile) {
 				SongCatalogSnapshot snapshot = SongCatalogSnapshot.FromSongNodes(
 					CSongDict.tGetSongNodesSnapshot(),
 					id => Favorites?.tIsFavorite(id) == true);
 				api.ReplaceCatalog(snapshot);
 				this.remoteCatalogSongCount = songCount;
+				this.remoteCatalogSaveFile = SaveFile;
 			}
 		}
 	}

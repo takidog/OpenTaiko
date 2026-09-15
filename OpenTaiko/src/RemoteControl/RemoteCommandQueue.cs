@@ -10,6 +10,7 @@ internal enum RemoteCommandType {
 	Preview,
 	StopPreview,
 	Restart,
+	SetFavorite,
 }
 
 internal enum RemoteCommandStatus {

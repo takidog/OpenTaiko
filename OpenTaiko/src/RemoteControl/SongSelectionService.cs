@@ -6,10 +6,10 @@ namespace OpenTaiko.RemoteControl;
 /// Executes remote selection commands on the game loop thread.
 /// </summary>
 internal sealed class SongSelectionService {
-	private readonly PlayHistoryService history;
+	private readonly GameRemoteControlApi api;
 
-	public SongSelectionService(PlayHistoryService history) {
-		this.history = history;
+	public SongSelectionService(GameRemoteControlApi api) {
+		this.api = api;
 	}
 
 	public RemoteCommandOutcome Execute(RemoteCommand command) {
@@ -24,6 +24,7 @@ internal sealed class SongSelectionService {
 			RemoteCommandType.Preview => this.Preview(command.Payload.Deserialize<PreviewRequest>(RemoteControlJson.Options)!),
 			RemoteCommandType.StopPreview => this.StopPreview(),
 			RemoteCommandType.Restart => this.Restart(command.Payload.Deserialize<RestartRequest>(RemoteControlJson.Options)!),
+			RemoteCommandType.SetFavorite => this.SetFavorite(command.Payload.Deserialize<FavoriteRequest>(RemoteControlJson.Options)!),
 			_ => RemoteCommandOutcome.Reject(ApiErrorCodes.InvalidRequest, "Unknown command type."),
 		};
 	}
@@ -63,8 +64,8 @@ internal sealed class SongSelectionService {
 
 	private RemoteCommandOutcome Restart(RestartRequest request) {
 		PlayHistoryEntryDto? entry = request.HistoryId is Guid historyId
-			? this.history.Get(historyId)
-			: this.history.GetLatest();
+			? this.api.History.Get(historyId)
+			: this.api.History.GetLatest();
 		if (entry is null) {
 			return RemoteCommandOutcome.Reject(ApiErrorCodes.HistoryNotFound, "The play history entry is no longer available.");
 		}
@@ -72,6 +73,13 @@ internal sealed class SongSelectionService {
 		OpenTaiko.SaveFile = entry.SaveSlot - 1;
 		OpenTaiko.PlayerSide = entry.PlayerSide == "right" ? 1 : 0;
 		return this.Play(new PlayRequest(entry.SongId, entry.Difficulty, entry.PlayerCount));
+	}
+
+	private RemoteCommandOutcome SetFavorite(FavoriteRequest request) {
+		bool current = OpenTaiko.Favorites.tIsFavorite(request.SongId);
+		if (current != request.Favorite) OpenTaiko.Favorites.tToggleFavorite(request.SongId);
+		this.api.SetFavorite(request.SongId, request.Favorite);
+		return RemoteCommandOutcome.Completed;
 	}
 
 	private bool SelectSong(string songId, ApiDifficulty apiDifficulty) {

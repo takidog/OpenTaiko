@@ -10,6 +10,11 @@ internal interface IRemoteControlApi {
 	GameStateDto GetState();
 	SongPageDto GetSongs(SongQuery query);
 	SongDto? GetSong(string songId);
+	SongAudioDto? GetSongAudio(string songId);
+	IReadOnlyList<string> GetGenres();
+	IReadOnlyList<SongDto> GetPlaylist();
+	bool AddToPlaylist(string songId);
+	bool RemoveFromPlaylist(string songId);
 	IReadOnlyList<PlayHistoryEntryDto> GetHistory(int limit);
 	bool TryGetCommand(Guid commandId, out RemoteCommandResult? result);
 	RemoteCommandResult Enqueue<TPayload>(RemoteCommandType type, TPayload payload);
@@ -46,6 +51,7 @@ internal sealed class ApiRouter {
 			return request.Method.ToUpperInvariant() switch {
 				"GET" => this.RouteGet(relativePath, ParseQuery(request.QueryString)),
 				"POST" => this.RoutePost(relativePath, request),
+				"DELETE" => this.RouteDelete(relativePath),
 				_ => Error(405, "METHOD_NOT_ALLOWED", "The HTTP method is not supported for this endpoint."),
 			};
 		} catch (JsonException) {
@@ -62,6 +68,8 @@ internal sealed class ApiRouter {
 	private ApiResponse RouteGet(string path, IReadOnlyDictionary<string, string> query) {
 		if (path == "/health") return Json(200, this.api.GetHealth());
 		if (path == "/state") return Json(200, this.api.GetState());
+		if (path == "/genres") return Json(200, this.api.GetGenres());
+		if (path == "/playlist") return Json(200, this.api.GetPlaylist());
 		if (path == "/songs") {
 			if (!TryOptionalDifficulty(query, out ApiDifficulty? difficulty)) {
 				return Error(422, ApiErrorCodes.InvalidDifficulty, "Unknown difficulty value.");
@@ -73,7 +81,8 @@ internal sealed class ApiRouter {
 				ParseOptionalInt(query, "minLevel", 1, 99),
 				ParseOptionalInt(query, "maxLevel", 1, 99),
 				ParseInt(query, "page", 1, int.MaxValue, 1),
-				ParseInt(query, "pageSize", 1, 500, 100));
+				ParseInt(query, "pageSize", 1, 500, 100),
+				ParseOptionalBool(query, "favorite"));
 			if (songQuery.MinimumLevel > songQuery.MaximumLevel) {
 				return Error(400, ApiErrorCodes.InvalidRequest, "minLevel cannot exceed maxLevel.");
 			}
@@ -82,6 +91,12 @@ internal sealed class ApiRouter {
 		if (path == "/history") {
 			int limit = ParseInt(query, "limit", 1, 100, 100);
 			return Json(200, this.api.GetHistory(limit));
+		}
+		if (TryNestedSongPath(path, "/audio", out string audioSongId)) {
+			SongAudioDto? audio = this.api.GetSongAudio(audioSongId);
+			return audio is null
+				? Error(404, "PREVIEW_NOT_FOUND", "No browser-compatible preview audio is available for this song.")
+				: new ApiResponse(200, audio.ContentType, audio.Content);
 		}
 		if (TryPathValue(path, "/songs/", out string? songId)) {
 			SongDto? song = this.api.GetSong(songId);
@@ -105,7 +120,7 @@ internal sealed class ApiRouter {
 		if (request.Body?.Length > MaximumRequestBodyBytes) {
 			return Error(413, "REQUEST_TOO_LARGE", "The request body exceeds 65536 bytes.");
 		}
-		bool bodyRequired = path is "/selection" or "/play" or "/preview";
+		bool bodyRequired = path is "/selection" or "/play" or "/preview" or "/favorite" or "/playlist";
 		if ((bodyRequired || request.Body?.Length > 0) && !IsJsonContentType(request.ContentType)) {
 			return Error(415, "UNSUPPORTED_MEDIA_TYPE", "POST requests require application/json.");
 		}
@@ -128,6 +143,17 @@ internal sealed class ApiRouter {
 			ValidateSongId(body.SongId);
 			return this.Enqueue(RemoteCommandType.Preview, body);
 		}
+		if (path == "/favorite") {
+			FavoriteRequest body = DeserializeRequired<FavoriteRequest>(request.Body);
+			ValidateSongId(body.SongId);
+			return this.Enqueue(RemoteCommandType.SetFavorite, body);
+		}
+		if (path == "/playlist") {
+			PlaylistRequest body = DeserializeRequired<PlaylistRequest>(request.Body);
+			ValidateSongId(body.SongId);
+			this.api.AddToPlaylist(body.SongId);
+			return Json(200, this.api.GetPlaylist());
+		}
 		if (path == "/preview/stop") {
 			EnsureEmptyJsonObject(request.Body);
 			return this.Enqueue(RemoteCommandType.StopPreview, new { });
@@ -146,6 +172,14 @@ internal sealed class ApiRouter {
 		}
 
 		return Error(404, "NOT_FOUND", "The requested endpoint does not exist.");
+	}
+
+	private ApiResponse RouteDelete(string path) {
+		if (TryPathValue(path, "/playlist/", out string songId)) {
+			this.api.RemoveFromPlaylist(songId);
+			return Json(200, this.api.GetPlaylist());
+		}
+		return Error(405, "METHOD_NOT_ALLOWED", "The HTTP method is not supported for this endpoint.");
 	}
 
 	private ApiResponse Enqueue<TPayload>(RemoteCommandType type, TPayload payload) {
@@ -197,6 +231,16 @@ internal sealed class ApiRouter {
 		return true;
 	}
 
+	private static bool TryNestedSongPath(string path, string suffix, out string songId) {
+		songId = string.Empty;
+		const string prefix = "/songs/";
+		if (!path.StartsWith(prefix, StringComparison.Ordinal) || !path.EndsWith(suffix, StringComparison.Ordinal)) return false;
+		string raw = path[prefix.Length..^suffix.Length];
+		if (string.IsNullOrWhiteSpace(raw) || raw.Contains('/')) return false;
+		songId = Uri.UnescapeDataString(raw);
+		return true;
+	}
+
 	private static Dictionary<string, string> ParseQuery(string? queryString) {
 		Dictionary<string, string> result = new(StringComparer.OrdinalIgnoreCase);
 		if (string.IsNullOrWhiteSpace(queryString)) return result;
@@ -220,6 +264,12 @@ internal sealed class ApiRouter {
 
 	private static int? ParseOptionalInt(IReadOnlyDictionary<string, string> query, string key, int minimum, int maximum)
 		=> query.ContainsKey(key) ? ParseInt(query, key, minimum, maximum, minimum) : null;
+
+	private static bool? ParseOptionalBool(IReadOnlyDictionary<string, string> query, string key) {
+		if (!query.TryGetValue(key, out string? value)) return null;
+		if (bool.TryParse(value, out bool parsed)) return parsed;
+		throw new ArgumentException($"{key} must be true or false.");
+	}
 
 	private static bool TryOptionalDifficulty(IReadOnlyDictionary<string, string> query, out ApiDifficulty? difficulty) {
 		difficulty = null;

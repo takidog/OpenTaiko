@@ -4,14 +4,20 @@ internal sealed class GameRemoteControlApi : IRemoteControlApi {
 	private readonly string version;
 	private readonly RemoteCommandQueue commands;
 	private readonly PlayHistoryService history;
+	private readonly PlaylistService playlist;
 	private SongCatalogSnapshot catalog = SongCatalogSnapshot.Empty;
 	private GameStateDto state = new("startup", null, null, 1);
 	private bool songIndexReady;
 
-	public GameRemoteControlApi(string version, RemoteCommandQueue commands, PlayHistoryService history) {
+	public GameRemoteControlApi(
+		string version,
+		RemoteCommandQueue commands,
+		PlayHistoryService history,
+		PlaylistService? playlist = null) {
 		this.version = version;
 		this.commands = commands;
 		this.history = history;
+		this.playlist = playlist ?? new PlaylistService();
 	}
 
 	public RemoteCommandQueue Commands => this.commands;
@@ -32,6 +38,17 @@ internal sealed class GameRemoteControlApi : IRemoteControlApi {
 	public GameStateDto GetState() => Volatile.Read(ref this.state);
 	public SongPageDto GetSongs(SongQuery query) => Volatile.Read(ref this.catalog).Search(query);
 	public SongDto? GetSong(string songId) => Volatile.Read(ref this.catalog).GetSong(songId);
+	public SongAudioDto? GetSongAudio(string songId) => Volatile.Read(ref this.catalog).GetPreviewAudio(songId);
+	public IReadOnlyList<string> GetGenres() => Volatile.Read(ref this.catalog).GetGenres();
+	public IReadOnlyList<SongDto> GetPlaylist() {
+		SongCatalogSnapshot currentCatalog = Volatile.Read(ref this.catalog);
+		return currentCatalog.GetSongs(this.playlist.GetSongIds());
+	}
+	public bool AddToPlaylist(string songId) {
+		ValidateSong(Volatile.Read(ref this.catalog), songId);
+		return this.playlist.Add(songId);
+	}
+	public bool RemoveFromPlaylist(string songId) => this.playlist.Remove(songId);
 	public IReadOnlyList<PlayHistoryEntryDto> GetHistory(int limit) => this.history.GetRecent(limit);
 	public bool TryGetCommand(Guid commandId, out RemoteCommandResult? result) => this.commands.TryGetResult(commandId, out result);
 
@@ -41,6 +58,15 @@ internal sealed class GameRemoteControlApi : IRemoteControlApi {
 		}
 		this.Validate(type, payload);
 		return this.commands.Enqueue(type, payload);
+	}
+
+	public void SetFavorite(string songId, bool favorite) {
+		while (true) {
+			SongCatalogSnapshot current = Volatile.Read(ref this.catalog);
+			SongCatalogSnapshot updated = current.WithFavorite(songId, favorite);
+			if (ReferenceEquals(current, updated)
+				|| ReferenceEquals(Interlocked.CompareExchange(ref this.catalog, updated, current), current)) return;
+		}
 	}
 
 	private void Validate<TPayload>(RemoteCommandType type, TPayload payload) {
@@ -54,6 +80,9 @@ internal sealed class GameRemoteControlApi : IRemoteControlApi {
 				break;
 			case (RemoteCommandType.Preview, PreviewRequest preview):
 				ValidateSong(currentCatalog, preview.SongId);
+				break;
+			case (RemoteCommandType.SetFavorite, FavoriteRequest favorite):
+				ValidateSong(currentCatalog, favorite.SongId);
 				break;
 			case (RemoteCommandType.Restart, RestartRequest restart): {
 				PlayHistoryEntryDto? entry = restart.HistoryId is Guid historyId

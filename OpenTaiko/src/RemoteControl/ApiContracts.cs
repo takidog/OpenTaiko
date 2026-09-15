@@ -51,7 +51,10 @@ internal sealed record SongDto(
 	[property: JsonPropertyName("maker")] string Maker,
 	[property: JsonPropertyName("breadcrumb")] string Breadcrumb,
 	[property: JsonPropertyName("difficulties")] IReadOnlyList<SongDifficultyDto> Difficulties,
-	[property: JsonPropertyName("favorite")] bool Favorite);
+	[property: JsonPropertyName("favorite")] bool Favorite,
+	[property: JsonPropertyName("webPreviewAvailable")] bool WebPreviewAvailable = false);
+
+internal sealed record SongAudioDto(string ContentType, byte[] Content);
 
 internal sealed record SelectionRequest(
 	[property: JsonPropertyName("songId")] string SongId,
@@ -63,6 +66,13 @@ internal sealed record PlayRequest(
 	[property: JsonPropertyName("playerCount")] int? PlayerCount);
 
 internal sealed record PreviewRequest(
+	[property: JsonPropertyName("songId")] string SongId);
+
+internal sealed record FavoriteRequest(
+	[property: JsonPropertyName("songId")] string SongId,
+	[property: JsonPropertyName("favorite")] bool Favorite);
+
+internal sealed record PlaylistRequest(
 	[property: JsonPropertyName("songId")] string SongId);
 
 internal sealed record RestartRequest(
@@ -104,7 +114,8 @@ internal sealed record SongQuery(
 	int? MinimumLevel,
 	int? MaximumLevel,
 	int Page,
-	int PageSize);
+	int PageSize,
+	bool? Favorite = null);
 
 internal sealed record CommandAcceptedDto(
 	[property: JsonPropertyName("commandId")] Guid CommandId,

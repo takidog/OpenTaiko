@@ -28,7 +28,7 @@ public sealed class ApiRouterTests {
 		ApiResponse list = router.Route(new ApiRequest(
 			"GET",
 			"/api/v1/songs",
-			"?query=%E5%A4%AA%E9%BC%93&genre=Anime&difficulty=ura&minLevel=8&maxLevel=10&page=2&pageSize=25"));
+			"?query=%E5%A4%AA%E9%BC%93&genre=Anime&difficulty=ura&minLevel=8&maxLevel=10&favorite=true&page=2&pageSize=25"));
 		ApiResponse item = router.Route(new ApiRequest("GET", "/api/v1/songs/song%2Bone"));
 
 		Assert.Equal(200, list.StatusCode);
@@ -36,6 +36,7 @@ public sealed class ApiRouterTests {
 		Assert.Equal(ApiDifficulty.Ura, this.api.LastSongQuery.Difficulty);
 		Assert.Equal(2, this.api.LastSongQuery.Page);
 		Assert.Equal(25, this.api.LastSongQuery.PageSize);
+		Assert.True(this.api.LastSongQuery.Favorite);
 		Assert.Equal(200, item.StatusCode);
 		Assert.Equal("song+one", this.api.LastSongId);
 	}
@@ -44,6 +45,7 @@ public sealed class ApiRouterTests {
 	[InlineData("?difficulty=impossible", 422, "INVALID_DIFFICULTY")]
 	[InlineData("?pageSize=501", 400, "INVALID_REQUEST")]
 	[InlineData("?minLevel=10&maxLevel=2", 400, "INVALID_REQUEST")]
+	[InlineData("?favorite=yes", 400, "INVALID_REQUEST")]
 	public void SongsRejectsInvalidQueries(string query, int status, string code) {
 		ApiResponse response = new ApiRouter(this.api).Route(new ApiRequest("GET", "/api/v1/songs", query));
 
@@ -120,6 +122,41 @@ public sealed class ApiRouterTests {
 		Assert.Equal(202, restart.StatusCode);
 	}
 
+	[Fact]
+	public void GenresAndBrowserAudioAreExposedWithoutLeakingPaths() {
+		ApiRouter router = new(this.api);
+
+		ApiResponse genres = router.Route(new ApiRequest("GET", "/api/v1/genres"));
+		ApiResponse audio = router.Route(new ApiRequest("GET", "/api/v1/songs/song%2Bone/audio"));
+
+		Assert.Equal(200, genres.StatusCode);
+		Assert.Contains("Anime", genres.BodyText);
+		Assert.Equal(200, audio.StatusCode);
+		Assert.Equal("audio/ogg", audio.ContentType);
+		Assert.Equal(new byte[] { 1, 2, 3 }, audio.Body);
+	}
+
+	[Fact]
+	public void FavoriteAndPlaylistMutationsUseStableEndpoints() {
+		ApiRouter router = new(this.api);
+
+		ApiResponse favorite = router.Route(JsonPost("/api/v1/favorite", """{"songId":"song+one","favorite":true}"""));
+		ApiResponse added = router.Route(JsonPost("/api/v1/playlist", """{"songId":"song+one"}"""));
+		ApiResponse removed = router.Route(new ApiRequest("DELETE", "/api/v1/playlist/song%2Bone"));
+
+		Assert.Equal(202, favorite.StatusCode);
+		Assert.Equal(RemoteCommandType.SetFavorite, this.api.LastCommandType);
+		Assert.True(Assert.IsType<FavoriteRequest>(this.api.LastPayload).Favorite);
+		Assert.Equal(200, added.StatusCode);
+		using (JsonDocument json = JsonDocument.Parse(added.Body)) {
+			Assert.Equal("song+one", json.RootElement[0].GetProperty("id").GetString());
+		}
+		Assert.Equal(200, removed.StatusCode);
+		using (JsonDocument json = JsonDocument.Parse(removed.Body)) {
+			Assert.Empty(json.RootElement.EnumerateArray());
+		}
+	}
+
 	private static ApiRequest JsonPost(string path, string body)
 		=> new("POST", path, ContentType: "application/json; charset=utf-8", Body: Encoding.UTF8.GetBytes(body));
 
@@ -131,6 +168,7 @@ public sealed class ApiRouterTests {
 
 	private sealed class FakeApi : IRemoteControlApi {
 		private readonly Dictionary<Guid, RemoteCommandResult> commands = new();
+		private readonly List<SongDto> playlist = new();
 		public SongQuery? LastSongQuery { get; private set; }
 		public string? LastSongId { get; private set; }
 		public RemoteCommandType? LastCommandType { get; private set; }
@@ -148,6 +186,17 @@ public sealed class ApiRouterTests {
 			this.LastSongId = songId;
 			return songId == "song+one" ? Song(songId) : null;
 		}
+		public SongAudioDto? GetSongAudio(string songId)
+			=> songId == "song+one" ? new SongAudioDto("audio/ogg", new byte[] { 1, 2, 3 }) : null;
+		public IReadOnlyList<string> GetGenres() => new[] { "Anime", "Game Music" };
+		public IReadOnlyList<SongDto> GetPlaylist() => this.playlist;
+		public bool AddToPlaylist(string songId) {
+			if (this.playlist.Any(song => song.Id == songId)) return false;
+			this.playlist.Add(Song(songId));
+			return true;
+		}
+		public bool RemoveFromPlaylist(string songId)
+			=> this.playlist.RemoveAll(song => song.Id == songId) > 0;
 
 		public IReadOnlyList<PlayHistoryEntryDto> GetHistory(int limit) => Array.Empty<PlayHistoryEntryDto>();
 		public bool TryGetCommand(Guid commandId, out RemoteCommandResult? result) => this.commands.TryGetValue(commandId, out result);
