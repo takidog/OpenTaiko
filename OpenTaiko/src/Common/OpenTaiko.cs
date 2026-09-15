@@ -1865,7 +1865,9 @@ internal class OpenTaiko : Game {
 				Path.Combine(strEXEのあるフォルダ, "PlayHistory.json"),
 				ConfigIni.PlayHistoryEnabled,
 				ConfigIni.PlayHistoryMaxEntries),
-			new PlaylistService(Path.Combine(strEXEのあるフォルダ, "RemotePlaylist.json")));
+			new PlaylistService(
+				Path.Combine(strEXEのあるフォルダ, "RemotePlaylists.json"),
+				Path.Combine(strEXEのあるフォルダ, "RemotePlaylist.json")));
 		RemoteSelectionService = new SongSelectionService(RemoteControlApi);
 
 		this.listTopLevelActivities.Add(actEnumSongs);
@@ -2005,7 +2007,10 @@ internal class OpenTaiko : Game {
 			ApiDifficultyMapper.FromGameDifficulty((Difficulty)difficulty),
 			SaveFile + 1,
 			ConfigIni.nPlayerCount,
-			PlayerSide == 1 ? "right" : "left");
+			PlayerSide == 1 ? "right" : "left",
+			songTitle: SongMount.rChoosenSong.ldTitle.GetString(
+				SongMount.rChoosenSong.ldTitle.GetAllStrings().FirstOrDefault() ?? songId),
+			genre: SongMount.rChoosenSong.songGenre);
 		CurrentPlayHistoryId = entry?.HistoryId;
 	}
 

@@ -40,16 +40,39 @@ internal sealed class GameRemoteControlApi : IRemoteControlApi {
 	public SongDto? GetSong(string songId) => Volatile.Read(ref this.catalog).GetSong(songId);
 	public SongAudioDto? GetSongAudio(string songId) => Volatile.Read(ref this.catalog).GetPreviewAudio(songId);
 	public IReadOnlyList<string> GetGenres() => Volatile.Read(ref this.catalog).GetGenres();
-	public IReadOnlyList<SongDto> GetPlaylist() {
-		SongCatalogSnapshot currentCatalog = Volatile.Read(ref this.catalog);
-		return currentCatalog.GetSongs(this.playlist.GetSongIds());
-	}
-	public bool AddToPlaylist(string songId) {
+	public IReadOnlyList<PlaylistDto> GetPlaylists()
+		=> this.playlist.GetAll().Select(this.ToPlaylistDto).ToArray();
+	public PlaylistExportDto ExportPlaylists() => this.playlist.Export();
+	public PlaylistDto CreatePlaylist(string name) => this.ToPlaylistDto(this.playlist.Create(name));
+	public PlaylistDto RenamePlaylist(Guid playlistId, string name) => this.ToPlaylistDto(this.playlist.Rename(playlistId, name));
+	public void DeletePlaylist(Guid playlistId) => this.playlist.Delete(playlistId);
+	public PlaylistDto AddSongToPlaylist(Guid playlistId, string songId) {
 		ValidateSong(Volatile.Read(ref this.catalog), songId);
-		return this.playlist.Add(songId);
+		return this.ToPlaylistDto(this.playlist.AddSong(playlistId, songId));
 	}
-	public bool RemoveFromPlaylist(string songId) => this.playlist.Remove(songId);
-	public IReadOnlyList<PlayHistoryEntryDto> GetHistory(int limit) => this.history.GetRecent(limit);
+	public PlaylistDto RemoveSongFromPlaylist(Guid playlistId, string songId)
+		=> this.ToPlaylistDto(this.playlist.RemoveSong(playlistId, songId));
+	public PlaylistDto ReorderPlaylist(Guid playlistId, IReadOnlyList<string> songIds)
+		=> this.ToPlaylistDto(this.playlist.ReorderSongs(playlistId, songIds));
+	public void ImportPlaylists(PlaylistExportDto document) {
+		ArgumentNullException.ThrowIfNull(document);
+		if (document.Playlists is null) throw new ArgumentException("playlists is required.");
+		SongCatalogSnapshot currentCatalog = Volatile.Read(ref this.catalog);
+		PlaylistDefinitionDto[] sanitized = document.Playlists.Select(item => item with {
+			SongIds = item.SongIds.Where(songId => currentCatalog.GetSong(songId) is not null).ToArray(),
+		}).ToArray();
+		this.playlist.Import(document with { Playlists = sanitized });
+	}
+	public IReadOnlyList<PlayHistoryEntryDto> GetHistory(int limit) {
+		SongCatalogSnapshot currentCatalog = Volatile.Read(ref this.catalog);
+		return this.history.GetRecent(limit).Select(entry => {
+			SongDto? song = currentCatalog.GetSong(entry.SongId);
+			return song is null ? entry : entry with {
+				SongTitle = string.IsNullOrWhiteSpace(entry.SongTitle) ? song.Title : entry.SongTitle,
+				Genre = string.IsNullOrWhiteSpace(entry.Genre) ? song.Genre : entry.Genre,
+			};
+		}).ToArray();
+	}
 	public bool TryGetCommand(Guid commandId, out RemoteCommandResult? result) => this.commands.TryGetResult(commandId, out result);
 
 	public RemoteCommandResult Enqueue<TPayload>(RemoteCommandType type, TPayload payload) {
@@ -67,6 +90,16 @@ internal sealed class GameRemoteControlApi : IRemoteControlApi {
 			if (ReferenceEquals(current, updated)
 				|| ReferenceEquals(Interlocked.CompareExchange(ref this.catalog, updated, current), current)) return;
 		}
+	}
+
+	private PlaylistDto ToPlaylistDto(PlaylistDefinitionDto playlist) {
+		SongCatalogSnapshot currentCatalog = Volatile.Read(ref this.catalog);
+		return new PlaylistDto(
+			playlist.Id,
+			playlist.Name,
+			playlist.CreatedAtUtc,
+			playlist.UpdatedAtUtc,
+			currentCatalog.GetSongs(playlist.SongIds));
 	}
 
 	private void Validate<TPayload>(RemoteCommandType type, TPayload payload) {

@@ -72,8 +72,35 @@ internal sealed record FavoriteRequest(
 	[property: JsonPropertyName("songId")] string SongId,
 	[property: JsonPropertyName("favorite")] bool Favorite);
 
-internal sealed record PlaylistRequest(
+internal sealed record PlaylistSongRequest(
 	[property: JsonPropertyName("songId")] string SongId);
+
+internal sealed record PlaylistCreateRequest(
+	[property: JsonPropertyName("name")] string Name);
+
+internal sealed record PlaylistRenameRequest(
+	[property: JsonPropertyName("name")] string Name);
+
+internal sealed record PlaylistReorderRequest(
+	[property: JsonPropertyName("songIds")] IReadOnlyList<string> SongIds);
+
+internal sealed record PlaylistDefinitionDto(
+	[property: JsonPropertyName("id")] Guid Id,
+	[property: JsonPropertyName("name")] string Name,
+	[property: JsonPropertyName("createdAtUtc")] DateTimeOffset CreatedAtUtc,
+	[property: JsonPropertyName("updatedAtUtc")] DateTimeOffset UpdatedAtUtc,
+	[property: JsonPropertyName("songIds")] IReadOnlyList<string> SongIds);
+
+internal sealed record PlaylistDto(
+	[property: JsonPropertyName("id")] Guid Id,
+	[property: JsonPropertyName("name")] string Name,
+	[property: JsonPropertyName("createdAtUtc")] DateTimeOffset CreatedAtUtc,
+	[property: JsonPropertyName("updatedAtUtc")] DateTimeOffset UpdatedAtUtc,
+	[property: JsonPropertyName("songs")] IReadOnlyList<SongDto> Songs);
+
+internal sealed record PlaylistExportDto(
+	[property: JsonPropertyName("version")] int Version,
+	[property: JsonPropertyName("playlists")] IReadOnlyList<PlaylistDefinitionDto> Playlists);
 
 internal sealed record RestartRequest(
 	[property: JsonPropertyName("historyId")] Guid? HistoryId);
@@ -105,7 +132,9 @@ internal sealed record PlayHistoryEntryDto(
 	[property: JsonPropertyName("startedAtUtc")] DateTimeOffset StartedAtUtc,
 	[property: JsonPropertyName("completedAtUtc")] DateTimeOffset? CompletedAtUtc,
 	[property: JsonPropertyName("status")] string Status,
-	[property: JsonPropertyName("modifiers")] IReadOnlyDictionary<string, JsonElement> Modifiers);
+	[property: JsonPropertyName("modifiers")] IReadOnlyDictionary<string, JsonElement> Modifiers,
+	[property: JsonPropertyName("songTitle")] string? SongTitle = null,
+	[property: JsonPropertyName("genre")] string? Genre = null);
 
 internal sealed record SongQuery(
 	string? Query,

@@ -20,6 +20,18 @@ public sealed class PlayHistoryServiceTests {
 	}
 
 	[Fact]
+	public void PersistsDisplayMetadataSoHistoryNeverNeedsToShowRawSongId() {
+		using TempHistory temp = new();
+		PlayHistoryService history = new(temp.Path);
+
+		history.Start("opaque-id", ApiDifficulty.Oni, 1, 1, "left", songTitle: "太鼓之歌", genre: "Anime");
+
+		PlayHistoryEntryDto loaded = Assert.Single(new PlayHistoryService(temp.Path).GetRecent());
+		Assert.Equal("太鼓之歌", loaded.SongTitle);
+		Assert.Equal("Anime", loaded.Genre);
+	}
+
+	[Fact]
 	public void KeepsOnlyNewestConfiguredEntriesAcrossReload() {
 		using TempHistory temp = new();
 		DateTimeOffset now = new(2026, 9, 15, 0, 0, 0, TimeSpan.Zero);

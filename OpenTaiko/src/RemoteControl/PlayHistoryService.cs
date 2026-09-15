@@ -33,7 +33,9 @@ internal sealed class PlayHistoryService {
 		int saveSlot,
 		int playerCount,
 		string playerSide,
-		IReadOnlyDictionary<string, JsonElement>? modifiers = null) {
+		IReadOnlyDictionary<string, JsonElement>? modifiers = null,
+		string? songTitle = null,
+		string? genre = null) {
 		if (!this.enabled) return null;
 		ArgumentException.ThrowIfNullOrWhiteSpace(songId);
 		if (saveSlot is < 1 or > 5) throw new ArgumentOutOfRangeException(nameof(saveSlot));
@@ -53,7 +55,9 @@ internal sealed class PlayHistoryService {
 			this.utcNow(),
 			null,
 			"started",
-			FreezeModifiers(modifiers));
+			FreezeModifiers(modifiers),
+			string.IsNullOrWhiteSpace(songTitle) ? null : songTitle,
+			string.IsNullOrWhiteSpace(genre) ? null : genre);
 		lock (this.syncRoot) {
 			this.entries.Insert(0, entry);
 			this.Trim();

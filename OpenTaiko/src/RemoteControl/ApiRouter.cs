@@ -12,9 +12,15 @@ internal interface IRemoteControlApi {
 	SongDto? GetSong(string songId);
 	SongAudioDto? GetSongAudio(string songId);
 	IReadOnlyList<string> GetGenres();
-	IReadOnlyList<SongDto> GetPlaylist();
-	bool AddToPlaylist(string songId);
-	bool RemoveFromPlaylist(string songId);
+	IReadOnlyList<PlaylistDto> GetPlaylists();
+	PlaylistExportDto ExportPlaylists();
+	PlaylistDto CreatePlaylist(string name);
+	PlaylistDto RenamePlaylist(Guid playlistId, string name);
+	void DeletePlaylist(Guid playlistId);
+	PlaylistDto AddSongToPlaylist(Guid playlistId, string songId);
+	PlaylistDto RemoveSongFromPlaylist(Guid playlistId, string songId);
+	PlaylistDto ReorderPlaylist(Guid playlistId, IReadOnlyList<string> songIds);
+	void ImportPlaylists(PlaylistExportDto document);
 	IReadOnlyList<PlayHistoryEntryDto> GetHistory(int limit);
 	bool TryGetCommand(Guid commandId, out RemoteCommandResult? result);
 	RemoteCommandResult Enqueue<TPayload>(RemoteCommandType type, TPayload payload);
@@ -51,6 +57,8 @@ internal sealed class ApiRouter {
 			return request.Method.ToUpperInvariant() switch {
 				"GET" => this.RouteGet(relativePath, ParseQuery(request.QueryString)),
 				"POST" => this.RoutePost(relativePath, request),
+				"PATCH" => this.RoutePatch(relativePath, request),
+				"PUT" => this.RoutePut(relativePath, request),
 				"DELETE" => this.RouteDelete(relativePath),
 				_ => Error(405, "METHOD_NOT_ALLOWED", "The HTTP method is not supported for this endpoint."),
 			};
@@ -69,7 +77,8 @@ internal sealed class ApiRouter {
 		if (path == "/health") return Json(200, this.api.GetHealth());
 		if (path == "/state") return Json(200, this.api.GetState());
 		if (path == "/genres") return Json(200, this.api.GetGenres());
-		if (path == "/playlist") return Json(200, this.api.GetPlaylist());
+		if (path == "/playlists/export") return Json(200, this.api.ExportPlaylists());
+		if (path == "/playlists") return Json(200, this.api.GetPlaylists());
 		if (path == "/songs") {
 			if (!TryOptionalDifficulty(query, out ApiDifficulty? difficulty)) {
 				return Error(422, ApiErrorCodes.InvalidDifficulty, "Unknown difficulty value.");
@@ -120,7 +129,8 @@ internal sealed class ApiRouter {
 		if (request.Body?.Length > MaximumRequestBodyBytes) {
 			return Error(413, "REQUEST_TOO_LARGE", "The request body exceeds 65536 bytes.");
 		}
-		bool bodyRequired = path is "/selection" or "/play" or "/preview" or "/favorite" or "/playlist";
+		bool bodyRequired = path is "/selection" or "/play" or "/preview" or "/favorite" or "/playlists"
+			|| path.EndsWith("/songs", StringComparison.Ordinal);
 		if ((bodyRequired || request.Body?.Length > 0) && !IsJsonContentType(request.ContentType)) {
 			return Error(415, "UNSUPPORTED_MEDIA_TYPE", "POST requests require application/json.");
 		}
@@ -148,11 +158,14 @@ internal sealed class ApiRouter {
 			ValidateSongId(body.SongId);
 			return this.Enqueue(RemoteCommandType.SetFavorite, body);
 		}
-		if (path == "/playlist") {
-			PlaylistRequest body = DeserializeRequired<PlaylistRequest>(request.Body);
+		if (path == "/playlists") {
+			PlaylistCreateRequest body = DeserializeRequired<PlaylistCreateRequest>(request.Body);
+			return Json(201, this.api.CreatePlaylist(body.Name));
+		}
+		if (TryPlaylistPath(path, "/songs", out Guid playlistId)) {
+			PlaylistSongRequest body = DeserializeRequired<PlaylistSongRequest>(request.Body);
 			ValidateSongId(body.SongId);
-			this.api.AddToPlaylist(body.SongId);
-			return Json(200, this.api.GetPlaylist());
+			return Json(200, this.api.AddSongToPlaylist(playlistId, body.SongId));
 		}
 		if (path == "/preview/stop") {
 			EnsureEmptyJsonObject(request.Body);
@@ -174,10 +187,36 @@ internal sealed class ApiRouter {
 		return Error(404, "NOT_FOUND", "The requested endpoint does not exist.");
 	}
 
+	private ApiResponse RoutePatch(string path, ApiRequest request) {
+		RequireJson(request);
+		if (TryPlaylistPath(path, string.Empty, out Guid playlistId)) {
+			PlaylistRenameRequest body = DeserializeRequired<PlaylistRenameRequest>(request.Body);
+			return Json(200, this.api.RenamePlaylist(playlistId, body.Name));
+		}
+		return Error(404, "NOT_FOUND", "The requested endpoint does not exist.");
+	}
+
+	private ApiResponse RoutePut(string path, ApiRequest request) {
+		RequireJson(request);
+		if (path == "/playlists/import") {
+			PlaylistExportDto body = DeserializeRequired<PlaylistExportDto>(request.Body);
+			this.api.ImportPlaylists(body);
+			return Json(200, this.api.GetPlaylists());
+		}
+		if (TryPlaylistPath(path, "/songs", out Guid playlistId)) {
+			PlaylistReorderRequest body = DeserializeRequired<PlaylistReorderRequest>(request.Body);
+			return Json(200, this.api.ReorderPlaylist(playlistId, body.SongIds));
+		}
+		return Error(404, "NOT_FOUND", "The requested endpoint does not exist.");
+	}
+
 	private ApiResponse RouteDelete(string path) {
-		if (TryPathValue(path, "/playlist/", out string songId)) {
-			this.api.RemoveFromPlaylist(songId);
-			return Json(200, this.api.GetPlaylist());
+		if (TryPlaylistSongPath(path, out Guid playlistId, out string songId)) {
+			return Json(200, this.api.RemoveSongFromPlaylist(playlistId, songId));
+		}
+		if (TryPlaylistPath(path, string.Empty, out playlistId)) {
+			this.api.DeletePlaylist(playlistId);
+			return Json(200, this.api.GetPlaylists());
 		}
 		return Error(405, "METHOD_NOT_ALLOWED", "The HTTP method is not supported for this endpoint.");
 	}
@@ -213,6 +252,11 @@ internal sealed class ApiRouter {
 		}
 	}
 
+	private static void RequireJson(ApiRequest request) {
+		if (request.Body?.Length > MaximumRequestBodyBytes) throw new ApiRouteException(413, "REQUEST_TOO_LARGE", "The request body exceeds 65536 bytes.");
+		if (!IsJsonContentType(request.ContentType)) throw new ApiRouteException(415, "UNSUPPORTED_MEDIA_TYPE", "This request requires application/json.");
+	}
+
 	private static bool IsJsonContentType(string? contentType)
 		=> contentType?.Split(';', 2)[0].Trim().Equals("application/json", StringComparison.OrdinalIgnoreCase) == true;
 
@@ -239,6 +283,25 @@ internal sealed class ApiRouter {
 		if (string.IsNullOrWhiteSpace(raw) || raw.Contains('/')) return false;
 		songId = Uri.UnescapeDataString(raw);
 		return true;
+	}
+
+	private static bool TryPlaylistPath(string path, string suffix, out Guid playlistId) {
+		playlistId = Guid.Empty;
+		const string prefix = "/playlists/";
+		if (!path.StartsWith(prefix, StringComparison.Ordinal) || !path.EndsWith(suffix, StringComparison.Ordinal)) return false;
+		int end = suffix.Length == 0 ? path.Length : path.Length - suffix.Length;
+		string idText = path[prefix.Length..end];
+		return !idText.Contains('/') && Guid.TryParse(Uri.UnescapeDataString(idText), out playlistId);
+	}
+
+	private static bool TryPlaylistSongPath(string path, out Guid playlistId, out string songId) {
+		playlistId = Guid.Empty;
+		songId = string.Empty;
+		string[] segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+		if (segments.Length != 4 || segments[0] != "playlists" || segments[2] != "songs"
+			|| !Guid.TryParse(segments[1], out playlistId)) return false;
+		songId = Uri.UnescapeDataString(segments[3]);
+		return !string.IsNullOrWhiteSpace(songId);
 	}
 
 	private static Dictionary<string, string> ParseQuery(string? queryString) {

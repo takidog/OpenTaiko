@@ -56,6 +56,20 @@ public sealed class GameRemoteControlApiTests {
 		Assert.Contains(ApiErrorCodes.GameBusy, response.BodyText);
 	}
 
+	[Fact]
+	public void HistoryResponseEnrichesLegacyEntriesWithCatalogMetadata() {
+		using TempDirectory temp = new();
+		PlayHistoryService history = new(temp.File("history.json"));
+		history.Start("song", ApiDifficulty.Oni, 1, 1, "left");
+		GameRemoteControlApi api = new("test", new RemoteCommandQueue(), history);
+		api.ReplaceCatalog(new SongCatalogSnapshot(new[] { Song("song", ApiDifficulty.Oni) }));
+
+		PlayHistoryEntryDto entry = Assert.Single(api.GetHistory(100));
+
+		Assert.Equal("Song", entry.SongTitle);
+		Assert.Equal("Anime", entry.Genre);
+	}
+
 	private static ApiRequest Post(string path, string body)
 		=> new("POST", path, ContentType: "application/json", Body: System.Text.Encoding.UTF8.GetBytes(body));
 

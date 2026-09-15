@@ -137,28 +137,41 @@ public sealed class ApiRouterTests {
 	}
 
 	[Fact]
-	public void FavoriteAndPlaylistMutationsUseStableEndpoints() {
+	public void FavoriteAndPlaylistCrudUseStableEndpoints() {
 		ApiRouter router = new(this.api);
 
 		ApiResponse favorite = router.Route(JsonPost("/api/v1/favorite", """{"songId":"song+one","favorite":true}"""));
-		ApiResponse added = router.Route(JsonPost("/api/v1/playlist", """{"songId":"song+one"}"""));
-		ApiResponse removed = router.Route(new ApiRequest("DELETE", "/api/v1/playlist/song%2Bone"));
+		ApiResponse created = router.Route(JsonPost("/api/v1/playlists", """{"name":"Road Trip"}"""));
+		Guid playlistId = JsonDocument.Parse(created.Body).RootElement.GetProperty("id").GetGuid();
+		ApiResponse added = router.Route(JsonPost($"/api/v1/playlists/{playlistId}/songs", """{"songId":"song+one"}"""));
+		ApiResponse renamed = router.Route(JsonRequest("PATCH", $"/api/v1/playlists/{playlistId}", """{"name":"Favorites"}"""));
+		ApiResponse reordered = router.Route(JsonRequest("PUT", $"/api/v1/playlists/{playlistId}/songs", """{"songIds":["song+one"]}"""));
+		ApiResponse exported = router.Route(new ApiRequest("GET", "/api/v1/playlists/export"));
+		ApiResponse imported = router.Route(JsonRequest("PUT", "/api/v1/playlists/import", exported.BodyText));
+		ApiResponse removed = router.Route(new ApiRequest("DELETE", $"/api/v1/playlists/{playlistId}/songs/song%2Bone"));
+		ApiResponse deleted = router.Route(new ApiRequest("DELETE", $"/api/v1/playlists/{playlistId}"));
 
 		Assert.Equal(202, favorite.StatusCode);
 		Assert.Equal(RemoteCommandType.SetFavorite, this.api.LastCommandType);
 		Assert.True(Assert.IsType<FavoriteRequest>(this.api.LastPayload).Favorite);
+		Assert.Equal(201, created.StatusCode);
 		Assert.Equal(200, added.StatusCode);
 		using (JsonDocument json = JsonDocument.Parse(added.Body)) {
-			Assert.Equal("song+one", json.RootElement[0].GetProperty("id").GetString());
+			Assert.Equal("song+one", json.RootElement.GetProperty("songs")[0].GetProperty("id").GetString());
 		}
+		Assert.Contains("Favorites", renamed.BodyText);
+		Assert.Equal(200, reordered.StatusCode);
+		Assert.Contains("\"version\":1", exported.BodyText);
+		Assert.Equal(200, imported.StatusCode);
 		Assert.Equal(200, removed.StatusCode);
-		using (JsonDocument json = JsonDocument.Parse(removed.Body)) {
-			Assert.Empty(json.RootElement.EnumerateArray());
-		}
+		Assert.Empty(JsonDocument.Parse(removed.Body).RootElement.GetProperty("songs").EnumerateArray());
+		Assert.Empty(JsonDocument.Parse(deleted.Body).RootElement.EnumerateArray());
 	}
 
 	private static ApiRequest JsonPost(string path, string body)
 		=> new("POST", path, ContentType: "application/json; charset=utf-8", Body: Encoding.UTF8.GetBytes(body));
+	private static ApiRequest JsonRequest(string method, string path, string body)
+		=> new(method, path, ContentType: "application/json; charset=utf-8", Body: Encoding.UTF8.GetBytes(body));
 
 	private static void AssertError(ApiResponse response, int status, string code) {
 		Assert.Equal(status, response.StatusCode);
@@ -168,7 +181,7 @@ public sealed class ApiRouterTests {
 
 	private sealed class FakeApi : IRemoteControlApi {
 		private readonly Dictionary<Guid, RemoteCommandResult> commands = new();
-		private readonly List<SongDto> playlist = new();
+		private readonly List<PlaylistDto> playlists = new();
 		public SongQuery? LastSongQuery { get; private set; }
 		public string? LastSongId { get; private set; }
 		public RemoteCommandType? LastCommandType { get; private set; }
@@ -189,14 +202,23 @@ public sealed class ApiRouterTests {
 		public SongAudioDto? GetSongAudio(string songId)
 			=> songId == "song+one" ? new SongAudioDto("audio/ogg", new byte[] { 1, 2, 3 }) : null;
 		public IReadOnlyList<string> GetGenres() => new[] { "Anime", "Game Music" };
-		public IReadOnlyList<SongDto> GetPlaylist() => this.playlist;
-		public bool AddToPlaylist(string songId) {
-			if (this.playlist.Any(song => song.Id == songId)) return false;
-			this.playlist.Add(Song(songId));
-			return true;
+		public IReadOnlyList<PlaylistDto> GetPlaylists() => this.playlists;
+		public PlaylistExportDto ExportPlaylists() => new(1, this.playlists.Select(item =>
+			new PlaylistDefinitionDto(item.Id, item.Name, item.CreatedAtUtc, item.UpdatedAtUtc, item.Songs.Select(song => song.Id).ToArray())).ToArray());
+		public PlaylistDto CreatePlaylist(string name) {
+			PlaylistDto created = new(Guid.NewGuid(), name, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, Array.Empty<SongDto>());
+			this.playlists.Add(created);
+			return created;
 		}
-		public bool RemoveFromPlaylist(string songId)
-			=> this.playlist.RemoveAll(song => song.Id == songId) > 0;
+		public PlaylistDto RenamePlaylist(Guid playlistId, string name) => this.Update(playlistId, item => item with { Name = name });
+		public void DeletePlaylist(Guid playlistId) => this.playlists.RemoveAll(item => item.Id == playlistId);
+		public PlaylistDto AddSongToPlaylist(Guid playlistId, string songId)
+			=> this.Update(playlistId, item => item with { Songs = item.Songs.Append(Song(songId)).ToArray() });
+		public PlaylistDto RemoveSongFromPlaylist(Guid playlistId, string songId)
+			=> this.Update(playlistId, item => item with { Songs = item.Songs.Where(song => song.Id != songId).ToArray() });
+		public PlaylistDto ReorderPlaylist(Guid playlistId, IReadOnlyList<string> songIds)
+			=> this.Update(playlistId, item => item with { Songs = songIds.Select(Song).ToArray() });
+		public void ImportPlaylists(PlaylistExportDto document) { }
 
 		public IReadOnlyList<PlayHistoryEntryDto> GetHistory(int limit) => Array.Empty<PlayHistoryEntryDto>();
 		public bool TryGetCommand(Guid commandId, out RemoteCommandResult? result) => this.commands.TryGetValue(commandId, out result);
@@ -208,6 +230,12 @@ public sealed class ApiRouterTests {
 			RemoteCommandResult result = new(Guid.NewGuid(), type, RemoteCommandStatus.Pending, now, now);
 			this.commands[result.CommandId] = result;
 			return result;
+		}
+
+		private PlaylistDto Update(Guid id, Func<PlaylistDto, PlaylistDto> update) {
+			int index = this.playlists.FindIndex(item => item.Id == id);
+			this.playlists[index] = update(this.playlists[index]);
+			return this.playlists[index];
 		}
 
 		private static SongDto Song(string id) => new(
