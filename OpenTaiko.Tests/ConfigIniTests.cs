@@ -11,6 +11,7 @@ public sealed class ConfigIniTests {
 		Assert.True(config.EnableNetworkConnectivityCheck);
 		Assert.True(config.EnableDiscordRpc);
 		Assert.False(config.SkipTitleScreen);
+		Assert.Equal("Prompt", config.PlayerMode);
 		Assert.False(config.RemoteControlEnabled);
 		Assert.Equal("127.0.0.1", config.RemoteControlHost);
 		Assert.Equal(100, config.PlayHistoryMaxEntries);
@@ -22,6 +23,7 @@ public sealed class ConfigIniTests {
 		Load(config, """
 			[Startup]
 			SkipTitleScreen=1
+			PlayerMode=2p
 			DefaultSaveSlot=2
 			DefaultPlayerSide=right
 			[Online]
@@ -39,6 +41,7 @@ public sealed class ConfigIniTests {
 			""");
 
 		Assert.True(config.SkipTitleScreen);
+		Assert.Equal("2P", config.PlayerMode);
 		Assert.Equal(2, config.DefaultSaveSlot);
 		Assert.Equal("Right", config.DefaultPlayerSide);
 		Assert.False(config.EnableNetworkConnectivityCheck);
@@ -58,6 +61,7 @@ public sealed class ConfigIniTests {
 		Load(config, """
 			[Startup]
 			DefaultSaveSlot=99
+			PlayerMode=3P
 			DefaultPlayerSide=middle
 			[RemoteControl]
 			Host=0.0.0.0
@@ -67,6 +71,7 @@ public sealed class ConfigIniTests {
 			""");
 
 		Assert.Equal(1, config.DefaultSaveSlot);
+		Assert.Equal("Prompt", config.PlayerMode);
 		Assert.Equal("Left", config.DefaultPlayerSide);
 		Assert.Equal("127.0.0.1", config.RemoteControlHost);
 		Assert.Equal(2354, config.RemoteControlPort);
@@ -80,6 +85,7 @@ public sealed class ConfigIniTests {
 		try {
 			CConfigIni original = new() {
 				SkipTitleScreen = true,
+				PlayerMode = "1P",
 				DefaultSaveSlot = 2,
 				DefaultPlayerSide = "Right",
 				EnableNetworkConnectivityCheck = false,
@@ -96,6 +102,7 @@ public sealed class ConfigIniTests {
 			CConfigIni loaded = new(path);
 
 			Assert.True(loaded.SkipTitleScreen);
+			Assert.Equal("1P", loaded.PlayerMode);
 			Assert.Equal(2, loaded.DefaultSaveSlot);
 			Assert.Equal("Right", loaded.DefaultPlayerSide);
 			Assert.False(loaded.EnableNetworkConnectivityCheck);

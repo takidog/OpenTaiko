@@ -27,6 +27,7 @@ internal class CStageTitle : CStage {
 		Trace.Indent();
 		try {
 			UnloadSaveFile();
+			ApplyConfiguredPlayerMode();
 
 			this.PuchiChara.IdleAnimation();
 
@@ -891,6 +892,24 @@ internal class CStageTitle : CStage {
 			if (OpenTaiko.Skin.voiceTitleSanka[OpenTaiko.SaveFile] != null)
 				OpenTaiko.Skin.voiceTitleSanka[OpenTaiko.SaveFile].bPlayed = true;
 		}
+	}
+
+	private void ApplyConfiguredPlayerMode() {
+		string mode = OpenTaiko.ConfigIni.PlayerMode;
+		if (mode is not ("1P" or "2P")) return;
+
+		int saveIndex = OpenTaiko.ConfigIni.DefaultSaveSlot - 1;
+		if (saveIndex is < 0 or > 1 || saveIndex >= OpenTaiko.SaveFileInstances.Length
+			|| OpenTaiko.SaveFileInstances[saveIndex] is null) {
+			Trace.TraceWarning($"Configured player mode ignored: save slot {OpenTaiko.ConfigIni.DefaultSaveSlot} is unavailable.");
+			return;
+		}
+
+		OpenTaiko.SaveFile = saveIndex;
+		OpenTaiko.ConfigIni.nPlayerCount = mode == "2P" ? 2 : 1;
+		OpenTaiko.PlayerSide = mode == "1P" && OpenTaiko.ConfigIni.DefaultPlayerSide == "Right" ? 1 : 0;
+		for (int player = 0; player < 2; player++) OpenTaiko.NamePlate.tNamePlateRefreshTitles(player);
+		bSaveFileLoaded = true;
 	}
 
 	// Restore the title screen to the "Taiko hit start" screen

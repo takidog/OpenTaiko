@@ -523,6 +523,7 @@ internal class CConfigIni : INotifyPropertyChanged {
 	public bool EnableDiscordRpc;
 
 	public bool SkipTitleScreen;
+	public string PlayerMode;
 	public int DefaultSaveSlot;
 	public string DefaultPlayerSide;
 
@@ -1004,6 +1005,7 @@ internal class CConfigIni : INotifyPropertyChanged {
 		EnableNetworkConnectivityCheck = true;
 		EnableDiscordRpc = true;
 		SkipTitleScreen = false;
+		PlayerMode = "Prompt";
 		DefaultSaveSlot = 1;
 		DefaultPlayerSide = "Left";
 		RemoteControlEnabled = false;
@@ -1463,6 +1465,7 @@ internal class CConfigIni : INotifyPropertyChanged {
 
 		sw.WriteLine("[Startup]");
 		sw.WriteLine("SkipTitleScreen={0}", this.SkipTitleScreen ? 1 : 0);
+		sw.WriteLine("PlayerMode={0}", this.PlayerMode);
 		sw.WriteLine("DefaultSaveSlot={0}", this.DefaultSaveSlot);
 		sw.WriteLine("DefaultPlayerSide={0}", this.DefaultPlayerSide);
 		sw.WriteLine();
@@ -2329,6 +2332,14 @@ internal class CConfigIni : INotifyPropertyChanged {
 		switch (key) {
 			case nameof(this.SkipTitleScreen):
 				this.SkipTitleScreen = CConversion.bONorOFF(value[0]);
+				break;
+			case nameof(this.PlayerMode):
+				if (value.Equals("Prompt", StringComparison.OrdinalIgnoreCase)
+					|| value.Equals("1P", StringComparison.OrdinalIgnoreCase)
+					|| value.Equals("2P", StringComparison.OrdinalIgnoreCase)) {
+					this.PlayerMode = value.Equals("1P", StringComparison.OrdinalIgnoreCase) ? "1P"
+						: value.Equals("2P", StringComparison.OrdinalIgnoreCase) ? "2P" : "Prompt";
+				}
 				break;
 			case nameof(this.DefaultSaveSlot):
 				this.DefaultSaveSlot = CConversion.ParseIntInRange(value, 1, 2, this.DefaultSaveSlot);
