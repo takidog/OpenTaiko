@@ -5,6 +5,7 @@ namespace OpenTaiko;
 internal class CSongDict {
 	private static Dictionary<string, CSongListNode> nodes = new Dictionary<string, CSongListNode>();
 	private static HashSet<string> urls = new HashSet<string>();
+	private static readonly object syncRoot = new();
 
 	public static CActSelect曲リスト.CScorePad[][] ScorePads = new CActSelect曲リスト.CScorePad[5][]
 	{
@@ -16,32 +17,42 @@ internal class CSongDict {
 	};
 
 	public static int tGetNodesCount() {
-		return nodes.Count();
+		lock (syncRoot) return nodes.Count;
 	}
 
 	public static string[] tGetNodesByGenreName(string genreName) {
-		return nodes.Where(_nd => _nd.Value.songGenre == genreName).Select(_nd => _nd.Key).ToArray();
+		lock (syncRoot) return nodes.Where(_nd => _nd.Value.songGenre == genreName).Select(_nd => _nd.Key).ToArray();
+	}
+
+	public static IReadOnlyList<CSongListNode> tGetSongNodesSnapshot() {
+		lock (syncRoot) return nodes.Values.Select(node => node.Clone()).ToArray();
 	}
 
 	#region [General song dict methods]
 
 	public static CSongListNode tGetNodeFromID(string id) {
-		if (nodes.ContainsKey(id))
-			return nodes[id].Clone();
-		return null;
+		lock (syncRoot) {
+			return nodes.TryGetValue(id, out CSongListNode? node) ? node.Clone() : null;
+		}
 	}
 
 	public static void tAddSongNode(CSongUniqueID sid, CSongListNode node) {
-		if (sid != null && sid.data.id != null && sid.data.id != "" && !nodes.ContainsKey(sid.data.id))
-			nodes.Add(sid.data.id, node.Clone());
-		tAddSongUrl(sid);
+		lock (syncRoot) {
+			if (sid != null && sid.data.id != null && sid.data.id != "" && !nodes.ContainsKey(sid.data.id))
+				nodes.Add(sid.data.id, node.Clone());
+			tAddSongUrlCore(sid);
+		}
 	}
 
 	public static bool tContainsSongUrl(string url) {
-		return urls.Contains(url);
+		lock (syncRoot) return urls.Contains(url);
 	}
 
 	public static void tAddSongUrl(CSongUniqueID sid) {
+		lock (syncRoot) tAddSongUrlCore(sid);
+	}
+
+	private static void tAddSongUrlCore(CSongUniqueID sid) {
 		var url = sid.data.url;
 
 		if (url != null && url != "" && !urls.Contains(url))
@@ -49,22 +60,28 @@ internal class CSongDict {
 	}
 
 	public static void tRemoveSongUrl(CSongUniqueID sid) {
-		var url = sid.data.url;
+		lock (syncRoot) tRemoveSongUrlCore(sid);
+	}
 
-		if (url != null && url != "" && urls.Contains(url))
-			urls.Remove(url);
+	private static void tRemoveSongUrlCore(CSongUniqueID sid) {
+		var url = sid.data.url;
+		if (url != null && url != "") urls.Remove(url);
 	}
 
 	public static void tRemoveSongNode(CSongUniqueID sid) {
-		if (sid != null && nodes.ContainsKey(sid.data.id)) {
-			tRemoveSongUrl(sid);
-			nodes.Remove(sid.data.id);
+		lock (syncRoot) {
+			if (sid != null && nodes.ContainsKey(sid.data.id)) {
+				tRemoveSongUrlCore(sid);
+				nodes.Remove(sid.data.id);
+			}
 		}
 	}
 
 	public static void tClearSongNodes() {
-		nodes.Clear();
-		urls.Clear();
+		lock (syncRoot) {
+			nodes.Clear();
+			urls.Clear();
+		}
 	}
 
 	#endregion

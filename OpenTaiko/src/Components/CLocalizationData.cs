@@ -15,6 +15,11 @@ internal class CLocalizationData {
 		return Strings.Values.ToArray();
 	}
 
+	public IReadOnlyDictionary<string, string> GetAllStringsWithLanguageCodes() {
+		return new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(
+			new Dictionary<string, string>(Strings, StringComparer.OrdinalIgnoreCase));
+	}
+
 	public string GetString(string defaultsDefault) {
 		string _lang = CLangManager.fetchLang();
 		if (Strings.ContainsKey(_lang))
