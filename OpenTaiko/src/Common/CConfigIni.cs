@@ -2331,7 +2331,7 @@ internal class CConfigIni : INotifyPropertyChanged {
 				this.SkipTitleScreen = CConversion.bONorOFF(value[0]);
 				break;
 			case nameof(this.DefaultSaveSlot):
-				this.DefaultSaveSlot = CConversion.ParseIntInRange(value, 1, 5, this.DefaultSaveSlot);
+				this.DefaultSaveSlot = CConversion.ParseIntInRange(value, 1, 2, this.DefaultSaveSlot);
 				break;
 			case nameof(this.DefaultPlayerSide):
 				if (value.Equals("Left", StringComparison.OrdinalIgnoreCase)

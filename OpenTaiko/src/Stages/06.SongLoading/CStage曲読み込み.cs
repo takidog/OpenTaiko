@@ -21,6 +21,7 @@ internal class CStage曲読み込み : CStage {
 		Trace.TraceInformation("曲読み込みステージを活性化します。");
 		Trace.Indent();
 		try {
+			OpenTaiko.BeginPlayHistory();
 			this.str曲タイトル = "";
 			this.strSTAGEFILE = "";
 			this.nBGM再生開始時刻 = -1;

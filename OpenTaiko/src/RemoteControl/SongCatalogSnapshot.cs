@@ -63,7 +63,7 @@ internal sealed class SongCatalogSnapshot {
 		List<SongDifficultyDto> difficulties = new();
 		for (int index = 0; index < (int)Difficulty.Total; index++) {
 			if (node.score[index] is null) continue;
-			difficulties.Add(new SongDifficultyDto(ToApiDifficulty((Difficulty)index), node.nLevel[index], true));
+			difficulties.Add(new SongDifficultyDto(ApiDifficultyMapper.FromGameDifficulty((Difficulty)index), node.nLevel[index], true));
 		}
 
 		IReadOnlyDictionary<string, string> titles = node.ldTitle.GetAllStringsWithLanguageCodes();
@@ -78,17 +78,6 @@ internal sealed class SongCatalogSnapshot {
 			Array.AsReadOnly(difficulties.ToArray()),
 			favorite);
 	}
-
-	private static ApiDifficulty ToApiDifficulty(Difficulty difficulty) => difficulty switch {
-		Difficulty.Easy => ApiDifficulty.Easy,
-		Difficulty.Normal => ApiDifficulty.Normal,
-		Difficulty.Hard => ApiDifficulty.Hard,
-		Difficulty.Oni => ApiDifficulty.Oni,
-		Difficulty.Edit => ApiDifficulty.Ura,
-		Difficulty.Tower => ApiDifficulty.Tower,
-		Difficulty.Dan => ApiDifficulty.Dan,
-		_ => throw new ArgumentOutOfRangeException(nameof(difficulty)),
-	};
 
 	private static IEnumerable<SongDifficultyDto> MatchingCharts(SongDto song, ApiDifficulty? difficulty)
 		=> difficulty is null ? song.Difficulties : song.Difficulties.Where(chart => chart.Id == difficulty);

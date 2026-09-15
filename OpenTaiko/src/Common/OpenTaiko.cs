@@ -9,6 +9,7 @@ using DiscordRPC;
 using FDK;
 using Silk.NET.Maths;
 using SkiaSharp;
+using OpenTaiko.RemoteControl;
 using Rectangle = System.Drawing.Rectangle;
 
 namespace OpenTaiko;
@@ -311,6 +312,10 @@ internal class OpenTaiko : Game {
 		set;
 	}
 
+	internal static GameRemoteControlApi? RemoteControlApi { get; private set; }
+	private static SongSelectionService? RemoteSelectionService { get; set; }
+	internal static Guid? CurrentPlayHistoryId { get; private set; }
+
 	// Constructor
 
 	public OpenTaiko(params string[] args) : base("OpenTaiko.ico", args) {
@@ -504,6 +509,10 @@ internal class OpenTaiko : Game {
 		try
 #endif
 		{
+			this.UpdateRemoteControlSnapshots();
+			if (RemoteControlApi is not null && RemoteSelectionService is not null) {
+				RemoteControlApi.Commands.Drain(RemoteSelectionService.Execute);
+			}
 			Timer?.Update();
 			SoundManager.PlayTimer?.Update();
 			FPS?.Update();
@@ -635,9 +644,16 @@ internal class OpenTaiko : Game {
 						#region [ *** ]
 						//-----------------------------
 						if (this.nDrawLoopReturnValue != 0) {
-							ChangeStage(stageTitle);
-							Trace.TraceInformation("----------------------");
-							Trace.TraceInformation("■ Title");
+							if (ConfigIni.SkipTitleScreen && this.TryApplyQuickStartupSettings()) {
+								ChangeStage(stageSongSelect);
+								latestSongSelect = stageSongSelect;
+								Trace.TraceInformation("----------------------");
+								Trace.TraceInformation("■ Song Select (quick startup)");
+							} else {
+								ChangeStage(stageTitle);
+								Trace.TraceInformation("----------------------");
+								Trace.TraceInformation("■ Title");
+							}
 
 							this.tExecuteGarbageCollection();
 						}
@@ -1488,6 +1504,7 @@ internal class OpenTaiko : Game {
 
 	public List<CActivity> listTopLevelActivities;
 	private int nDrawLoopReturnValue;
+	private int remoteCatalogSongCount = -1;
 	private string strWindowTitle
 	// ayo komi isn't this useless code? - tfd500
 	{
@@ -1839,6 +1856,14 @@ internal class OpenTaiko : Game {
 		stageExit = new CStage終了();
 		NamePlate = new CNamePlate();
 		SaveFile = 0;
+		RemoteControlApi = new GameRemoteControlApi(
+			VERSION,
+			new RemoteCommandQueue(),
+			new PlayHistoryService(
+				Path.Combine(strEXEのあるフォルダ, "PlayHistory.json"),
+				ConfigIni.PlayHistoryEnabled,
+				ConfigIni.PlayHistoryMaxEntries));
+		RemoteSelectionService = new SongSelectionService(RemoteControlApi.History);
 
 		this.listTopLevelActivities.Add(actEnumSongs);
 		this.listTopLevelActivities.Add(actTextConsole);
@@ -1875,9 +1900,16 @@ internal class OpenTaiko : Game {
 		}
 		#endregion
 
-		// Set up the HTTP server.
-		OpenTaiko.HttpEventReporter = new HttpEventReporter("localhost", OpenTaiko.ConfigIni.nGameEventBroadcastingPort);
-		if (OpenTaiko.ConfigIni.bEnableGameEventBroadcasting)
+		// Set up the loopback-only HTTP server. When remote control is enabled it also
+		// carries the legacy event stream at the root path for compatibility.
+		int httpPort = ConfigIni.RemoteControlEnabled
+			? ConfigIni.RemoteControlPort
+			: ConfigIni.nGameEventBroadcastingPort;
+		ApiRouter? apiRouter = ConfigIni.RemoteControlEnabled && RemoteControlApi is not null
+			? new ApiRouter(RemoteControlApi)
+			: null;
+		OpenTaiko.HttpEventReporter = new HttpEventReporter("127.0.0.1", httpPort, apiRouter);
+		if (OpenTaiko.ConfigIni.bEnableGameEventBroadcasting || ConfigIni.RemoteControlEnabled)
 			OpenTaiko.HttpEventReporter.StartListening();
 
 		Trace.TraceInformation("Application successfully started.");
@@ -1889,6 +1921,79 @@ internal class OpenTaiko : Game {
 		Trace.TraceInformation("■ Startup");
 		//---------------------
 		#endregion
+	}
+
+	private void UpdateRemoteControlSnapshots() {
+		GameRemoteControlApi? api = RemoteControlApi;
+		if (api is null || ConfigIni is null) return;
+
+		CSongListNode? selected = SongMount?.rCurrentlySelectedSong;
+		ApiDifficulty? difficulty = null;
+		if (selected is not null && SongMount.nCurrentSongDifficulty is >= 0 and < (int)Difficulty.Total) {
+			difficulty = ApiDifficultyMapper.FromGameDifficulty((Difficulty)SongMount.nCurrentSongDifficulty);
+		}
+		api.UpdateState(new GameStateDto(
+			rCurrentStage?.eStageID.ToString() ?? "None",
+			selected?.tGetUniqueId(),
+			difficulty,
+			ConfigIni.nPlayerCount));
+
+		if (EnumSongs?.IsSongListEnumCompletelyDone == true) {
+			int songCount = CSongDict.tGetNodesCount();
+			if (songCount != this.remoteCatalogSongCount) {
+				SongCatalogSnapshot snapshot = SongCatalogSnapshot.FromSongNodes(
+					CSongDict.tGetSongNodesSnapshot(),
+					id => Favorites?.tIsFavorite(id) == true);
+				api.ReplaceCatalog(snapshot);
+				this.remoteCatalogSongCount = songCount;
+			}
+		}
+	}
+
+	private bool TryApplyQuickStartupSettings() {
+		int saveIndex = ConfigIni.DefaultSaveSlot - 1;
+		if (saveIndex is < 0 or > 1 || saveIndex >= SaveFileInstances.Length || SaveFileInstances[saveIndex] is null) {
+			Trace.TraceWarning($"Quick startup disabled: save slot {ConfigIni.DefaultSaveSlot} is unavailable.");
+			return false;
+		}
+		if (ConfigIni.nPlayerCount is < 1 or > 5) {
+			Trace.TraceWarning($"Quick startup disabled: player count {ConfigIni.nPlayerCount} is invalid.");
+			return false;
+		}
+
+		SaveFile = saveIndex;
+		PlayerSide = ConfigIni.nPlayerCount == 1 && ConfigIni.DefaultPlayerSide == "Right" ? 1 : 0;
+		for (int player = 0; player < Math.Min(2, ConfigIni.nPlayerCount); player++) {
+			NamePlate.tNamePlateRefreshTitles(player);
+		}
+		return true;
+	}
+
+	internal static void BeginPlayHistory() {
+		string? songId = SongMount?.rChoosenSong?.tGetUniqueId();
+		int difficulty = SongMount?.nChoosenSongDifficulty[0] ?? -1;
+		if (RemoteControlApi is null || string.IsNullOrWhiteSpace(songId)
+			|| difficulty is < 0 or >= (int)Difficulty.Total) {
+			return;
+		}
+
+		PlayHistoryEntryDto? entry = RemoteControlApi.History.Start(
+			songId,
+			ApiDifficultyMapper.FromGameDifficulty((Difficulty)difficulty),
+			SaveFile + 1,
+			ConfigIni.nPlayerCount,
+			PlayerSide == 1 ? "right" : "left");
+		CurrentPlayHistoryId = entry?.HistoryId;
+	}
+
+	internal static void CompletePlayHistory(bool[] cleared, int[] scores) {
+		if (RemoteControlApi is null || CurrentPlayHistoryId is not Guid historyId) return;
+		Dictionary<string, System.Text.Json.JsonElement> result = new() {
+			["scores"] = System.Text.Json.JsonSerializer.SerializeToElement(scores, RemoteControlJson.Options),
+			["cleared"] = System.Text.Json.JsonSerializer.SerializeToElement(cleared, RemoteControlJson.Options),
+		};
+		RemoteControlApi.History.Complete(historyId, cleared.Any(value => value) ? "cleared" : "failed", result);
+		CurrentPlayHistoryId = null;
 	}
 
 	public void ShowWindowTitle() {

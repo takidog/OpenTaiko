@@ -13,6 +13,30 @@ internal enum ApiDifficulty {
 	Dan,
 }
 
+internal static class ApiDifficultyMapper {
+	public static ApiDifficulty FromGameDifficulty(Difficulty difficulty) => difficulty switch {
+		Difficulty.Easy => ApiDifficulty.Easy,
+		Difficulty.Normal => ApiDifficulty.Normal,
+		Difficulty.Hard => ApiDifficulty.Hard,
+		Difficulty.Oni => ApiDifficulty.Oni,
+		Difficulty.Edit => ApiDifficulty.Ura,
+		Difficulty.Tower => ApiDifficulty.Tower,
+		Difficulty.Dan => ApiDifficulty.Dan,
+		_ => throw new ArgumentOutOfRangeException(nameof(difficulty)),
+	};
+
+	public static Difficulty ToGameDifficulty(ApiDifficulty difficulty) => difficulty switch {
+		ApiDifficulty.Easy => Difficulty.Easy,
+		ApiDifficulty.Normal => Difficulty.Normal,
+		ApiDifficulty.Hard => Difficulty.Hard,
+		ApiDifficulty.Oni => Difficulty.Oni,
+		ApiDifficulty.Ura => Difficulty.Edit,
+		ApiDifficulty.Tower => Difficulty.Tower,
+		ApiDifficulty.Dan => Difficulty.Dan,
+		_ => throw new ArgumentOutOfRangeException(nameof(difficulty)),
+	};
+}
+
 internal sealed record SongDifficultyDto(
 	[property: JsonPropertyName("id")] ApiDifficulty Id,
 	[property: JsonPropertyName("level")] int Level,

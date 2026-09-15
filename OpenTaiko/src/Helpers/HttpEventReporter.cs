@@ -3,13 +3,14 @@ using System.Text;
 using System.Text.Json;
 using System.Diagnostics;
 using System.IO;
+using OpenTaiko.RemoteControl;
 
 namespace OpenTaiko;
 
 /// <summary>
 /// Reports game events over HTTP in real time.
 /// </summary>
-internal class HttpEventReporter(string host, int port) {
+internal class HttpEventReporter(string host, int port, ApiRouter? apiRouter = null) {
     public string host { get; private set; } = host;
     public int port { get; private set; } = port;
 
@@ -22,23 +23,30 @@ internal class HttpEventReporter(string host, int port) {
 
     public void StartListening() {
         if (this.started) return;
-        this.started = true;
+        try {
+            this._listener = new HttpListener();
+            this._listener.Prefixes.Add($"http://{this.host}:{this.port}/");
+            this._listener.Start();
+            this.started = true;
+            Trace.TraceInformation($"[HttpEventReporter] Listening on http://{this.host}:{this.port}/");
+            _ = Task.Run(this.AcceptConnectionsAsync);
+        } catch (Exception ex) {
+            this._listener?.Close();
+            this._listener = null;
+            this.started = false;
+            Trace.TraceError($"[HttpEventReporter] Listener error: {ex.Message}");
+        }
+    }
 
-        Task.Run(async () => {
-            try {
-                this._listener = new HttpListener();
-                this._listener.Prefixes.Add($"http://{this.host}:{this.port}/");
-                this._listener.Start();
-                Trace.TraceInformation($"[HttpEventReporter] Listening on http://{this.host}:{this.port}/");
-
-                while (this._listener.IsListening) {
-                    HttpListenerContext context = await this._listener.GetContextAsync();
-                    this.HandleClient(context);
-                }
-            } catch (Exception ex) {
-                Trace.TraceError($"[HttpEventReporter] Listener error: {ex.Message}");
+    private async Task AcceptConnectionsAsync() {
+        try {
+            while (this._listener?.IsListening == true) {
+                HttpListenerContext context = await this._listener.GetContextAsync();
+                _ = this.HandleClientAsync(context);
             }
-        });
+        } catch (Exception ex) when (ex is HttpListenerException or ObjectDisposedException) {
+            if (this.started) Trace.TraceError($"[HttpEventReporter] Listener error: {ex.Message}");
+        }
     }
 
     public void StopListening() {
@@ -62,7 +70,13 @@ internal class HttpEventReporter(string host, int port) {
         }
     }
 
-    private void HandleClient(HttpListenerContext context) {
+    private async Task HandleClientAsync(HttpListenerContext context) {
+        string path = context.Request.Url?.AbsolutePath ?? "/";
+        if (path != "/" && path != "/api/v1/events") {
+            await this.HandleApiRequestAsync(context, path);
+            return;
+        }
+
         HttpListenerResponse response = context.Response;
         response.ContentType = "text/event-stream";
         response.Headers.Add("Cache-Control", "no-cache");
@@ -83,6 +97,50 @@ internal class HttpEventReporter(string host, int port) {
             this._clients.Add(response);
         }
         Trace.TraceInformation("[HttpEventReporter] Client connected.");
+    }
+
+    private async Task HandleApiRequestAsync(HttpListenerContext context, string path) {
+        if (apiRouter is null) {
+            context.Response.StatusCode = 404;
+            context.Response.Close();
+            return;
+        }
+
+        byte[] body = await ReadRequestBodyAsync(context.Request);
+        ApiResponse apiResponse = apiRouter.Route(new ApiRequest(
+            context.Request.HttpMethod,
+            path,
+            context.Request.Url?.Query,
+            context.Request.ContentType,
+            body));
+        HttpListenerResponse response = context.Response;
+        response.StatusCode = apiResponse.StatusCode;
+        response.ContentType = apiResponse.ContentType;
+        response.ContentEncoding = Encoding.UTF8;
+        response.ContentLength64 = apiResponse.Body.Length;
+        try {
+            await response.OutputStream.WriteAsync(apiResponse.Body);
+        } finally {
+            response.Close();
+        }
+    }
+
+    private static async Task<byte[]> ReadRequestBodyAsync(HttpListenerRequest request) {
+        if (!request.HasEntityBody) return Array.Empty<byte>();
+        if (request.ContentLength64 > ApiRouter.MaximumRequestBodyBytes) {
+            return new byte[ApiRouter.MaximumRequestBodyBytes + 1];
+        }
+
+        using MemoryStream body = new();
+        byte[] buffer = new byte[8192];
+        int remaining = ApiRouter.MaximumRequestBodyBytes + 1;
+        while (remaining > 0) {
+            int read = await request.InputStream.ReadAsync(buffer.AsMemory(0, Math.Min(buffer.Length, remaining)));
+            if (read == 0) break;
+            body.Write(buffer, 0, read);
+            remaining -= read;
+        }
+        return body.ToArray();
     }
 
     public void ReportNoteJudgement(ENoteJudge noteJudge, int player, CChip? chip, int? msDelta) {

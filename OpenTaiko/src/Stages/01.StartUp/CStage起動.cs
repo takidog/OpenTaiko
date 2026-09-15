@@ -221,6 +221,9 @@ internal class CStage起動 : CStage {
 				}
 
 				if (ePhaseID == EPhase.Startup_Complete) {
+					if (OpenTaiko.ConfigIni.SkipTitleScreen) {
+						return 1;
+					}
 					if (OpenTaiko.Pad.bPressed(EInstrumentPad.Drums, EPad.Decide)
 						|| OpenTaiko.Pad.bPressed(EInstrumentPad.Drums, EPad.RRed)
 						|| OpenTaiko.Pad.bPressed(EInstrumentPad.Drums, EPad.LRed)

@@ -1598,6 +1598,11 @@ internal class CStage結果 : CStage {
 			// Song added to recently added songs here
 
 			OpenTaiko.RecentlyPlayedSongs.tAddChart(OpenTaiko.SongMount.rChoosenSong.uniqueId.data.id);
+			bool[] cleared = this.bClear.Take(OpenTaiko.ConfigIni.nPlayerCount).ToArray();
+			int[] scores = Enumerable.Range(0, OpenTaiko.ConfigIni.nPlayerCount)
+				.Select(player => OpenTaiko.stageGameScreen.CChartScore[player].nScore)
+				.ToArray();
+			OpenTaiko.CompletePlayHistory(cleared, scores);
 
 			bAddedToRecentlyPlayedSongs = true;
 		}

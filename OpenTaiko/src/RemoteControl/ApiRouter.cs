@@ -52,6 +52,8 @@ internal sealed class ApiRouter {
 			return Error(400, ApiErrorCodes.InvalidRequest, "The request body is not valid JSON.");
 		} catch (ArgumentException exception) {
 			return Error(400, ApiErrorCodes.InvalidRequest, exception.Message);
+		} catch (ApiRouteException exception) {
+			return Error(exception.StatusCode, exception.ErrorCode, exception.Message);
 		} catch (Exception) {
 			return Error(500, ApiErrorCodes.InternalError, "An unexpected server error occurred.");
 		}
@@ -231,4 +233,14 @@ internal sealed class ApiRouter {
 
 	private static ApiResponse Error(int statusCode, string code, string message)
 		=> Json(statusCode, new ApiErrorBody(new ApiError(code, message, new Dictionary<string, JsonElement>())));
+}
+
+internal sealed class ApiRouteException : Exception {
+	public ApiRouteException(int statusCode, string errorCode, string message) : base(message) {
+		this.StatusCode = statusCode;
+		this.ErrorCode = errorCode;
+	}
+
+	public int StatusCode { get; }
+	public string ErrorCode { get; }
 }

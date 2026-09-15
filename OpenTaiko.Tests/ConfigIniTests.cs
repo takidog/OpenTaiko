@@ -22,7 +22,7 @@ public sealed class ConfigIniTests {
 		Load(config, """
 			[Startup]
 			SkipTitleScreen=1
-			DefaultSaveSlot=4
+			DefaultSaveSlot=2
 			DefaultPlayerSide=right
 			[Online]
 			EnableNetworkConnectivityCheck=0
@@ -39,7 +39,7 @@ public sealed class ConfigIniTests {
 			""");
 
 		Assert.True(config.SkipTitleScreen);
-		Assert.Equal(4, config.DefaultSaveSlot);
+		Assert.Equal(2, config.DefaultSaveSlot);
 		Assert.Equal("Right", config.DefaultPlayerSide);
 		Assert.False(config.EnableNetworkConnectivityCheck);
 		Assert.False(config.EnableDiscordRpc);
@@ -80,7 +80,7 @@ public sealed class ConfigIniTests {
 		try {
 			CConfigIni original = new() {
 				SkipTitleScreen = true,
-				DefaultSaveSlot = 3,
+				DefaultSaveSlot = 2,
 				DefaultPlayerSide = "Right",
 				EnableNetworkConnectivityCheck = false,
 				EnableDiscordRpc = false,
@@ -96,7 +96,7 @@ public sealed class ConfigIniTests {
 			CConfigIni loaded = new(path);
 
 			Assert.True(loaded.SkipTitleScreen);
-			Assert.Equal(3, loaded.DefaultSaveSlot);
+			Assert.Equal(2, loaded.DefaultSaveSlot);
 			Assert.Equal("Right", loaded.DefaultPlayerSide);
 			Assert.False(loaded.EnableNetworkConnectivityCheck);
 			Assert.False(loaded.EnableDiscordRpc);

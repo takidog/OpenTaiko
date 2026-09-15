@@ -1707,11 +1707,11 @@ internal class CActConfigList : CActivity {
 		OpenTaiko.ConfigIni.bEnableGameEventBroadcasting = this.iSystemGameEventBroadcasting.bON;
 		OpenTaiko.ConfigIni.nGameEventBroadcastingPort = this.iSystemGameEventBroadcastingPort.n現在の値;
 
-		if (bBroadcastingEnabledChanged || nBroadcastingPortChanged) {
+		if (!OpenTaiko.ConfigIni.RemoteControlEnabled && (bBroadcastingEnabledChanged || nBroadcastingPortChanged)) {
 			if (OpenTaiko.HttpEventReporter != null) {
 				OpenTaiko.HttpEventReporter.StopListening();
 			}
-			OpenTaiko.HttpEventReporter = new HttpEventReporter("localhost", OpenTaiko.ConfigIni.nGameEventBroadcastingPort);
+			OpenTaiko.HttpEventReporter = new HttpEventReporter("127.0.0.1", OpenTaiko.ConfigIni.nGameEventBroadcastingPort);
 			if (OpenTaiko.ConfigIni.bEnableGameEventBroadcasting) {
 				OpenTaiko.HttpEventReporter.StartListening();
 			}
