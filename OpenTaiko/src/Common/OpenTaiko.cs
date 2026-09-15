@@ -263,7 +263,7 @@ internal class OpenTaiko : Game {
 		get;
 		set;
 	}
-	public static DiscordRpcClient DiscordClient;
+	public static DiscordRpcClient? DiscordClient;
 
 	// 0 : 1P, 1 : 2P
 	public static int SaveFile = 0;
@@ -1226,7 +1226,8 @@ internal class OpenTaiko : Game {
 
 				actScanningLoudness?.Draw();
 
-				if (rCurrentStage != null
+				if (ConfigIni.EnableNetworkConnectivityCheck
+					&& rCurrentStage != null
 					&& rCurrentStage.eStageID != CStage.EStage.StartUp
 					&& rCurrentStage.eStageID != CStage.EStage.CRASH
 					&& OpenTaiko.Tx.Network_Connection != null) {
@@ -1858,18 +1859,20 @@ internal class OpenTaiko : Game {
 		#endregion
 
 		#region [ Discord Rpc initialisation]
-		DiscordClient = new DiscordRpcClient("939341030141096007");
-		DiscordClient?.Initialize();
 		StartupTime = DateTime.UtcNow;
-		DiscordClient?.SetPresence(new RichPresence() {
-			Details = "",
-			State = "Startup",
-			Timestamps = new Timestamps(OpenTaiko.StartupTime),
-			Assets = new Assets() {
-				LargeImageKey = OpenTaiko.LargeImageKey,
-				LargeImageText = OpenTaiko.LargeImageText,
-			}
-		});
+		if (ConfigIni.EnableDiscordRpc) {
+			DiscordClient = new DiscordRpcClient("939341030141096007");
+			DiscordClient.Initialize();
+			DiscordClient.SetPresence(new RichPresence() {
+				Details = "",
+				State = "Startup",
+				Timestamps = new Timestamps(OpenTaiko.StartupTime),
+				Assets = new Assets() {
+					LargeImageKey = OpenTaiko.LargeImageKey,
+					LargeImageText = OpenTaiko.LargeImageText,
+				}
+			});
+		}
 		#endregion
 
 		// Set up the HTTP server.

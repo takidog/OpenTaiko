@@ -513,6 +513,29 @@ internal class CConfigIni : INotifyPropertyChanged {
 	public bool SendDiscordPlayingInformation;
 
 	/// <summary>
+	/// Whether OpenTaiko periodically checks Internet connectivity.
+	/// </summary>
+	public bool EnableNetworkConnectivityCheck;
+
+	/// <summary>
+	/// Whether the Discord RPC client is created at startup.
+	/// </summary>
+	public bool EnableDiscordRpc;
+
+	public bool SkipTitleScreen;
+	public int DefaultSaveSlot;
+	public string DefaultPlayerSide;
+
+	public bool RemoteControlEnabled;
+	public string RemoteControlHost;
+	public int RemoteControlPort;
+	public bool ServeWebUI;
+	public bool OpenWebUIOnStartup;
+
+	public bool PlayHistoryEnabled;
+	public int PlayHistoryMaxEntries;
+
+	/// <summary>
 	/// Enable game event broadcasting to external applications via HTTP.
 	/// </summary>
 	public bool bEnableGameEventBroadcasting;
@@ -854,6 +877,10 @@ internal class CConfigIni : INotifyPropertyChanged {
 
 		this.sectionProcess = new Dictionary<ESectionType, Action<string, string>>() {
 			{ ESectionType.System, this.ProcessSystemSection },
+			{ ESectionType.Startup, this.ProcessStartupSection },
+			{ ESectionType.Online, this.ProcessOnlineSection },
+			{ ESectionType.RemoteControl, this.ProcessRemoteControlSection },
+			{ ESectionType.PlayHistory, this.ProcessPlayHistorySection },
 			{ ESectionType.AutoPlay, this.ProcessAutoPlaySection },
 			{ ESectionType.HitRange, this.ProcessHitRangeSection },
 			{ ESectionType.Log, this.ProcessLogSection },
@@ -974,6 +1001,18 @@ internal class CConfigIni : INotifyPropertyChanged {
 		SimpleMode = false;
 		MusicPreTimeMs = 2500; // 2.5 seconds
 		SendDiscordPlayingInformation = true;
+		EnableNetworkConnectivityCheck = true;
+		EnableDiscordRpc = true;
+		SkipTitleScreen = false;
+		DefaultSaveSlot = 1;
+		DefaultPlayerSide = "Left";
+		RemoteControlEnabled = false;
+		RemoteControlHost = "127.0.0.1";
+		RemoteControlPort = 2354;
+		ServeWebUI = true;
+		OpenWebUIOnStartup = false;
+		PlayHistoryEnabled = true;
+		PlayHistoryMaxEntries = 100;
 		bEnableGameEventBroadcasting = false;
 		nGameEventBroadcastingPort = 2354;
 
@@ -1417,6 +1456,46 @@ internal class CConfigIni : INotifyPropertyChanged {
 		sw.WriteLine("EndingAnime={0}", this.bEndingAnime ? 1 : 0);
 		sw.WriteLine();
 		sw.WriteLine(";-------------------");
+
+		#endregion
+
+		#region [ Startup ]
+
+		sw.WriteLine("[Startup]");
+		sw.WriteLine("SkipTitleScreen={0}", this.SkipTitleScreen ? 1 : 0);
+		sw.WriteLine("DefaultSaveSlot={0}", this.DefaultSaveSlot);
+		sw.WriteLine("DefaultPlayerSide={0}", this.DefaultPlayerSide);
+		sw.WriteLine();
+
+		#endregion
+
+		#region [ Online ]
+
+		sw.WriteLine("[Online]");
+		sw.WriteLine("EnableNetworkConnectivityCheck={0}", this.EnableNetworkConnectivityCheck ? 1 : 0);
+		sw.WriteLine("EnableDiscordRpc={0}", this.EnableDiscordRpc ? 1 : 0);
+		sw.WriteLine();
+
+		#endregion
+
+		#region [ RemoteControl ]
+
+		sw.WriteLine("[RemoteControl]");
+		sw.WriteLine("Enabled={0}", this.RemoteControlEnabled ? 1 : 0);
+		sw.WriteLine("Host={0}", this.RemoteControlHost);
+		sw.WriteLine("Port={0}", this.RemoteControlPort);
+		sw.WriteLine("ServeWebUI={0}", this.ServeWebUI ? 1 : 0);
+		sw.WriteLine("OpenWebUIOnStartup={0}", this.OpenWebUIOnStartup ? 1 : 0);
+		sw.WriteLine();
+
+		#endregion
+
+		#region [ PlayHistory ]
+
+		sw.WriteLine("[PlayHistory]");
+		sw.WriteLine("Enabled={0}", this.PlayHistoryEnabled ? 1 : 0);
+		sw.WriteLine("MaxEntries={0}", this.PlayHistoryMaxEntries);
+		sw.WriteLine();
 
 		#endregion
 
@@ -1940,6 +2019,10 @@ internal class CConfigIni : INotifyPropertyChanged {
 					string sectionName = builder.ToString();
 					currentSectionType = sectionName switch {
 						"System" => ESectionType.System,
+						"Startup" => ESectionType.Startup,
+						"Online" => ESectionType.Online,
+						"RemoteControl" => ESectionType.RemoteControl,
+						"PlayHistory" => ESectionType.PlayHistory,
 						"AutoPlay" => ESectionType.AutoPlay,
 						"HitRange" => ESectionType.HitRange,
 						"Log" => ESectionType.Log,
@@ -2238,6 +2321,68 @@ internal class CConfigIni : INotifyPropertyChanged {
 				break;
 			case "EndingAnime":
 				this.bEndingAnime = CConversion.bONorOFF(value[0]);
+				break;
+		}
+	}
+
+	private void ProcessStartupSection(string key, string value) {
+		switch (key) {
+			case nameof(this.SkipTitleScreen):
+				this.SkipTitleScreen = CConversion.bONorOFF(value[0]);
+				break;
+			case nameof(this.DefaultSaveSlot):
+				this.DefaultSaveSlot = CConversion.ParseIntInRange(value, 1, 5, this.DefaultSaveSlot);
+				break;
+			case nameof(this.DefaultPlayerSide):
+				if (value.Equals("Left", StringComparison.OrdinalIgnoreCase)
+					|| value.Equals("Right", StringComparison.OrdinalIgnoreCase)) {
+					this.DefaultPlayerSide = value.Equals("Right", StringComparison.OrdinalIgnoreCase) ? "Right" : "Left";
+				}
+				break;
+		}
+	}
+
+	private void ProcessOnlineSection(string key, string value) {
+		switch (key) {
+			case nameof(this.EnableNetworkConnectivityCheck):
+				this.EnableNetworkConnectivityCheck = CConversion.bONorOFF(value[0]);
+				break;
+			case nameof(this.EnableDiscordRpc):
+				this.EnableDiscordRpc = CConversion.bONorOFF(value[0]);
+				break;
+		}
+	}
+
+	private void ProcessRemoteControlSection(string key, string value) {
+		switch (key) {
+			case "Enabled":
+				this.RemoteControlEnabled = CConversion.bONorOFF(value[0]);
+				break;
+			case "Host":
+				// Remote control v1 is intentionally restricted to loopback.
+				if (value is "127.0.0.1" or "localhost") {
+					this.RemoteControlHost = "127.0.0.1";
+				}
+				break;
+			case "Port":
+				this.RemoteControlPort = CConversion.ParseIntInRange(value, 1, 65535, this.RemoteControlPort);
+				break;
+			case nameof(this.ServeWebUI):
+				this.ServeWebUI = CConversion.bONorOFF(value[0]);
+				break;
+			case nameof(this.OpenWebUIOnStartup):
+				this.OpenWebUIOnStartup = CConversion.bONorOFF(value[0]);
+				break;
+		}
+	}
+
+	private void ProcessPlayHistorySection(string key, string value) {
+		switch (key) {
+			case "Enabled":
+				this.PlayHistoryEnabled = CConversion.bONorOFF(value[0]);
+				break;
+			case "MaxEntries":
+				this.PlayHistoryMaxEntries = CConversion.ParseIntInRange(value, 1, 100, this.PlayHistoryMaxEntries);
 				break;
 		}
 	}
@@ -2840,6 +2985,10 @@ internal class CConfigIni : INotifyPropertyChanged {
 	private enum ESectionType {
 		Unknown,
 		System,
+		Startup,
+		Online,
+		RemoteControl,
+		PlayHistory,
 		Log,
 		PlayOption,
 		ViewerOption,
