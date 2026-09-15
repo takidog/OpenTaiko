@@ -76,7 +76,7 @@ internal class HttpEventReporter(
 
     private async Task HandleClientAsync(HttpListenerContext context) {
         string path = context.Request.Url?.AbsolutePath ?? "/";
-        bool eventStream = path == "/api/v1/events"
+        bool eventStream = (path == "/api/v1/events" && apiRouter is not null)
             || (path == "/" && (staticFileHandler is null || context.Request.AcceptTypes?.Contains("text/event-stream") == true));
         if (eventStream) {
             this.HandleEventStream(context, path == "/");

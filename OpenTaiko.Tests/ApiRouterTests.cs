@@ -109,6 +109,17 @@ public sealed class ApiRouterTests {
 		AssertError(router.Route(JsonPost("/api/v1/history/not-a-guid/play", "{}")), 400, ApiErrorCodes.InvalidRequest);
 	}
 
+	[Fact]
+	public void BodylessCommandsDoNotRequireContentType() {
+		ApiRouter router = new(this.api);
+
+		ApiResponse stop = router.Route(new ApiRequest("POST", "/api/v1/preview/stop"));
+		ApiResponse restart = router.Route(new ApiRequest("POST", "/api/v1/restart"));
+
+		Assert.Equal(202, stop.StatusCode);
+		Assert.Equal(202, restart.StatusCode);
+	}
+
 	private static ApiRequest JsonPost(string path, string body)
 		=> new("POST", path, ContentType: "application/json; charset=utf-8", Body: Encoding.UTF8.GetBytes(body));
 

@@ -105,7 +105,8 @@ internal sealed class ApiRouter {
 		if (request.Body?.Length > MaximumRequestBodyBytes) {
 			return Error(413, "REQUEST_TOO_LARGE", "The request body exceeds 65536 bytes.");
 		}
-		if (!IsJsonContentType(request.ContentType)) {
+		bool bodyRequired = path is "/selection" or "/play" or "/preview";
+		if ((bodyRequired || request.Body?.Length > 0) && !IsJsonContentType(request.ContentType)) {
 			return Error(415, "UNSUPPORTED_MEDIA_TYPE", "POST requests require application/json.");
 		}
 
