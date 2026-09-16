@@ -61,6 +61,8 @@ When enabled, open `http://127.0.0.1:2354/` on the game computer. In LAN mode, o
 | PUT | `/playlists/{playlistId}/songs` | Replace the song order |
 | PUT | `/playlists/import` | Import and replace all web playlists |
 | POST | `/restart` | Replay the latest or specified history entry |
+| POST | `/gameplay/exit` | Safely stop the current play and return to song selection |
+| POST | `/gameplay/retry` | Restart the current chart without returning to song selection |
 | POST | `/history/{historyId}/play` | Replay a specified history entry |
 | DELETE | `/playlists/{playlistId}` | Delete a playlist, including the last one |
 | DELETE | `/playlists/{playlistId}/songs/{songId}` | Remove a song from a playlist |
@@ -69,7 +71,9 @@ When enabled, open `http://127.0.0.1:2354/` on the game computer. In LAN mode, o
 
 The quick-selection page separates the catalog, custom playlists, and recent plays into tabs. Web playlists are independent of OpenTaiko's Favorite and Recent folders, support create/rename/delete, multi-list membership, drag ordering, and JSON import/export, and are stored in `RemotePlaylists.json`. Existing `RemotePlaylist.json` data is migrated automatically. Recent plays show category and every matching playlist badge, favorite state, and both preview actions. "Web preview" plays audio only in the browser. "Game Preview" sends `/preview`, moves the in-game song selection immediately, and uses OpenTaiko's normal preview playback. Favorites remain stored in the game's existing `Favorite.json`.
 
-POST bodies use UTF-8 `application/json`. Accepted commands return HTTP 202 with a `commandId`; poll the command endpoint or subscribe to SSE for completion. Commands are rejected with `GAME_BUSY` while OpenTaiko is outside the idle song-selection stage.
+POST bodies use UTF-8 `application/json`. Accepted commands return HTTP 202 with a `commandId`; poll the command endpoint or subscribe to SSE for completion. Commands return `GAME_BUSY` when they are unavailable in the current stage.
+
+`GET /state` and SSE `state` events include `playbackStatus`, song metadata, elapsed and total milliseconds, progress from 0 to 1, and `canExit`, `canRetry`, and `canSelectSong` capability flags. Gameplay progress is throttled to approximately one update per second. Selection, play, and history replay commands are also accepted on the results screen; OpenTaiko completes result/history persistence, returns to standard song selection, and then applies the requested song. Gameplay exit and retry remain restricted to safe gameplay phases.
 
 ## Troubleshooting
 
