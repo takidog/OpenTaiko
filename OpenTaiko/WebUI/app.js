@@ -1,9 +1,11 @@
 const api = "/api/v1";
-const ids = ["connection","stage","current-song","players","game-session","playback-status","playing-song","playing-difficulty","game-progress","elapsed-time","duration-time","session-hint","game-controls","game-retry","game-exit","song-count","playlist-count","query","genre","difficulty","min-level","max-level","favorite-only","songs","playlist","playlist-none","playlist-empty","playlist-select","playlist-create","playlist-rename","playlist-delete","playlist-export","playlist-import","playlist-dialog","playlist-dialog-song","playlist-dialog-options","playlist-dialog-create","history","error","load-more","filters","toast","web-audio","web-preview-title"];
+const ids = ["connection","stage","current-song","players","game-session","playback-status","playing-song","playing-difficulty","game-progress","elapsed-time","duration-time","session-hint","game-controls","game-retry","game-exit","song-count","playlist-count","query","genre","difficulty","min-level","max-level","favorite-only","songs","song-sentinel","playlist","playlist-none","playlist-empty","playlist-select","playlist-create","playlist-rename","playlist-delete","playlist-export","playlist-import","playlist-dialog","playlist-dialog-song","playlist-dialog-options","playlist-dialog-create","history","error","filters","toast","web-audio","web-preview-title"];
 const ui = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
-let page = 1, total = 0, loading = false, debounce, toastTimer, activePlaylistId = null, dialogSong = null;
+let page = 1, total = 0, loading = false, hasMoreSongs = true, songLoadGeneration = 0, songAbortController = null;
+let debounce, toastTimer, activePlaylistId = null, dialogSong = null, catalogReady = false, catalogRefreshPromise = null;
 let playlists = [];
 const songsById = new Map();
+const renderedSongIds = new Set();
 
 async function request(path, options) {
   const response = await fetch(api + path, options);
@@ -71,25 +73,74 @@ function filterParams() {
 }
 async function loadGenres() {
   const genres = await request("/genres"), selected = ui.genre.value;
-  ui.genre.replaceChildren(new Option("所有分類", "")); genres.forEach(genre => ui.genre.add(new Option(genre, genre))); ui.genre.value = selected;
+  ui.genre.replaceChildren(new Option("所有分類", "")); genres.forEach(genre => ui.genre.add(new Option(genre, genre)));
+  ui.genre.value = genres.includes(selected) ? selected : "";
 }
 async function loadSongs(reset = false) {
-  if (loading) return; loading = true;
-  if (reset) { page = 1; ui.songs.replaceChildren(); }
+  if (reset) {
+    songLoadGeneration += 1; songAbortController?.abort(); loading = false; page = 1; total = 0; hasMoreSongs = true;
+    renderedSongIds.clear(); ui.songs.replaceChildren(); ui["song-sentinel"].textContent = "正在載入歌曲…";
+  }
+  if (loading || !hasMoreSongs || !catalogReady) return;
+  const generation = songLoadGeneration, requestedPage = page, controller = new AbortController();
+  let requestSucceeded = false;
+  songAbortController = controller; loading = true; ui["song-sentinel"].textContent = "正在載入歌曲…";
   ui.error.hidden = true;
   try {
-    const result = await request(`/songs?${filterParams()}`); total = result.total;
-    result.items.forEach(song => { songsById.set(song.id, song); ui.songs.append(songCard(song)); });
-    ui["song-count"].textContent = `${total} 首`; ui["load-more"].hidden = page * result.pageSize >= total;
-  } catch (error) { ui.error.textContent = error.message; ui.error.hidden = false; }
-  finally { loading = false; }
+    const result = await request(`/songs?${filterParams()}`, { signal:controller.signal });
+    if (generation !== songLoadGeneration) return;
+    total = result.total;
+    result.items.forEach(song => {
+      songsById.set(song.id, song);
+      if (!renderedSongIds.has(song.id)) { renderedSongIds.add(song.id); ui.songs.append(songCard(song)); }
+    });
+    page = requestedPage + 1; hasMoreSongs = renderedSongIds.size < total && result.items.length > 0;
+    requestSucceeded = true;
+    ui["song-count"].textContent = `${total} 首`;
+    ui["song-sentinel"].textContent = hasMoreSongs ? "繼續向下捲動以載入更多" : (total ? `已載入全部 ${total} 首歌曲` : "沒有符合條件的歌曲");
+  } catch (error) {
+    if (error.name !== "AbortError" && generation === songLoadGeneration) {
+      ui.error.textContent = error.message; ui.error.hidden = false; ui["song-sentinel"].textContent = "載入失敗，捲動到此處可重試";
+    }
+  } finally {
+    if (generation === songLoadGeneration) {
+      loading = false;
+      if (requestSucceeded && hasMoreSongs && ui["song-sentinel"].getBoundingClientRect().top < window.innerHeight + 500) {
+        setTimeout(() => loadSongs(), 0);
+      }
+    }
+  }
+}
+
+async function refreshCatalogData() {
+  if (catalogRefreshPromise) return catalogRefreshPromise;
+  catalogRefreshPromise = (async () => {
+    catalogReady = true;
+    await loadGenres();
+    await loadPlaylists();
+    await loadSongs(true);
+    await loadHistory();
+    await refreshState();
+  })().finally(() => { catalogRefreshPromise = null; });
+  return catalogRefreshPromise;
+}
+
+async function checkCatalogReadiness() {
+  try {
+    const health = await request("/health"); setOnline(true);
+    if (health.songIndexReady && !catalogReady) await refreshCatalogData();
+    else if (!health.songIndexReady) {
+      catalogReady = false; ui["song-sentinel"].textContent = "OpenTaiko 正在載入歌曲…";
+    }
+  } catch { setOnline(false); }
 }
 
 function songCard(song, mode = "catalog") {
   const card = document.getElementById("song-template").content.firstElementChild.cloneNode(true);
-  card.dataset.songId = song.id; card.querySelector("h3").textContent = song.title;
+  card.dataset.songId = song.id; const heading = card.querySelector("h3"); heading.textContent = song.title; heading.title = song.title;
   card.querySelector(".genre").textContent = song.genre || "OTHER";
-  card.querySelector(".meta").textContent = [song.subtitle, song.maker].filter(Boolean).join(" · ") || song.breadcrumb;
+  const meta = card.querySelector(".meta"), metaText = [song.subtitle, song.maker].filter(Boolean).join(" · ") || song.breadcrumb;
+  meta.textContent = metaText; meta.title = metaText;
   bindFavorite(card.querySelector(".favorite"), song);
   let selected = song.difficulties.find(d => d.id === ui.difficulty.value && d.available) || song.difficulties.find(d => d.id === "oni" && d.available) || song.difficulties.find(d => d.available);
   const holder = card.querySelector(".difficulties");
@@ -247,7 +298,7 @@ async function loadHistory() {
       const row = document.createElement("div"), song = songsById.get(entry.songId); row.className = "history-item";
       const copy = document.createElement("div"), heading = document.createElement("div"), title = document.createElement("strong"), detail = document.createElement("small"), badges = document.createElement("div"), playlistBadges = document.createElement("span"), actions = document.createElement("div");
       copy.className = "history-copy"; heading.className = "history-heading"; badges.className = "badges"; playlistBadges.className = "playlist-badges"; playlistBadges.dataset.songId = entry.songId; actions.className = "history-actions";
-      title.textContent = entry.songTitle || song?.title || (entry.difficulty === "dan" ? "段位道場" : "未知歌曲"); detail.textContent = `${entry.difficulty.toUpperCase()} · ${new Date(entry.startedAtUtc).toLocaleString()}`;
+      title.textContent = entry.songTitle || song?.title || (entry.difficulty === "dan" ? "段位道場" : "未知歌曲"); title.title = title.textContent; detail.textContent = `${entry.difficulty.toUpperCase()} · ${new Date(entry.startedAtUtc).toLocaleString()}`;
       const genreName = entry.genre || song?.genre; if (genreName) badges.append(makeBadge(genreName, "genre-badge")); badges.append(playlistBadges);
       playlistNamesFor(entry.songId).forEach(name => playlistBadges.append(makeBadge(name, "playlist-badge")));
       heading.append(title); if (song) { const favorite = document.createElement("button"); favorite.type = "button"; favorite.className = "favorite icon-button history-heart"; bindFavorite(favorite, song); heading.append(favorite); }
@@ -266,7 +317,11 @@ document.querySelectorAll(".tab").forEach(tab => tab.onclick = () => {
   if (tab.dataset.tab === "playlist-panel") loadPlaylists(); if (tab.dataset.tab === "history-panel") loadHistory();
 });
 ui.filters.addEventListener("input", () => { clearTimeout(debounce); debounce = setTimeout(() => loadSongs(true), 220); });
-ui["load-more"].onclick = () => { page += 1; loadSongs(); };
+const songObserver = new IntersectionObserver(entries => {
+  if (entries.some(entry => entry.isIntersecting) && !document.getElementById("catalog-panel").hidden) loadSongs();
+}, { rootMargin:"500px 0px" });
+songObserver.observe(ui["song-sentinel"]);
+ui["song-sentinel"].onclick = () => loadSongs();
 ui["playlist-select"].onchange = () => { activePlaylistId = ui["playlist-select"].value; renderPlaylistManager(); };
 ui["playlist-create"].onclick = createPlaylist; ui["playlist-rename"].onclick = renamePlaylist; ui["playlist-delete"].onclick = deletePlaylist;
 ui["playlist-export"].onclick = exportPlaylists; ui["playlist-import"].onchange = () => importPlaylists(ui["playlist-import"].files[0]);
@@ -275,15 +330,20 @@ ui["game-exit"].onclick = async () => { ui["game-exit"].disabled = true; ui["gam
 ui["game-retry"].onclick = async () => { ui["game-exit"].disabled = true; ui["game-retry"].disabled = true; await command("/gameplay/retry", {}); refreshState(); };
 
 async function start() {
-  try { await request("/health"); setOnline(true); await loadGenres(); await loadPlaylists(); await loadSongs(true); await Promise.all([refreshState(), loadHistory()]); }
+  try {
+    const health = await request("/health"); setOnline(true); await refreshState();
+    if (health.songIndexReady) await refreshCatalogData();
+    else ui["song-sentinel"].textContent = "OpenTaiko 正在載入歌曲…";
+  }
   catch { setOnline(false); ui.error.textContent = "無法連接 OpenTaiko。請確認 RemoteControl.Enabled=1。"; ui.error.hidden = false; }
   const events = new EventSource(`${api}/events`); events.onmessage = event => {
     try {
       const message = JSON.parse(event.data);
       if (message.type === "state") { renderState(message.data); setOnline(true); }
       if (message.type === "history") loadHistory();
+      if (message.type === "catalog") { catalogReady = false; refreshCatalogData(); }
     } catch { refreshState(); }
   }; events.onerror = () => setOnline(false);
-  setInterval(refreshState, 3000);
+  setInterval(() => { refreshState(); if (!catalogReady) checkCatalogReadiness(); }, 3000);
 }
 start();
