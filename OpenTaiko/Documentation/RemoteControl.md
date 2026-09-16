@@ -1,6 +1,6 @@
 # Remote Control API v1
 
-OpenTaiko can expose a loopback-only HTTP API and quick song-selection page. The feature is disabled by default.
+OpenTaiko can expose an HTTP API and quick song-selection page on the local computer or local network. The feature is disabled by default.
 
 ## Configuration
 
@@ -29,9 +29,11 @@ Enabled=1
 MaxEntries=100
 ```
 
-`PlayerMode` accepts `Prompt`, `1P`, or `2P`. `1P` and `2P` skip the title screen's "Press P" player-entry step and synchronize `PlayerCount`, while `Prompt` preserves the original interaction. `DefaultSaveSlot` accepts 1 or 2. `DefaultPlayerSide` accepts `Left` or `Right` and only affects single-player startup. Remote control v1 always binds to `127.0.0.1`; other host values fall back to loopback.
+`PlayerMode` accepts `Prompt`, `1P`, or `2P`. `1P` and `2P` skip the title screen's "Press P" player-entry step and synchronize `PlayerCount`, while `Prompt` preserves the original interaction. `DefaultSaveSlot` accepts 1 or 2. `DefaultPlayerSide` accepts `Left` or `Right` and only affects single-player startup.
 
-When enabled, open `http://127.0.0.1:2354/`. The JSON API base URL is `http://127.0.0.1:2354/api/v1`.
+`RemoteControl.Host` accepts `127.0.0.1` (same computer only) or `0.0.0.0` (all network interfaces). LAN mode has no API authentication or pairing; every device that can reach the port can inspect the song library and control the game. Use it only on a trusted private network and allow TCP port 2354 through Windows Firewall when prompted.
+
+When enabled, open `http://127.0.0.1:2354/` on the game computer. In LAN mode, other devices use `http://<game-computer-ip>:2354/`. The JSON API is under `/api/v1` on the same address.
 
 ## Endpoints
 
@@ -72,6 +74,7 @@ POST bodies use UTF-8 `application/json`. Accepted commands return HTTP 202 with
 ## Troubleshooting
 
 - If the page does not open, confirm `RemoteControl.Enabled=1` and that the configured port is unused.
-- The server intentionally cannot bind to a LAN address. Use it only from the same computer.
+- For LAN access, set `Host=0.0.0.0`, keep the game running, use the game computer's private IPv4 address, and allow the configured TCP port through Windows Firewall.
+- LAN mode intentionally has no authentication. Do not expose the port to the public internet or configure router port forwarding.
 - If `PlayHistory.json` is damaged, OpenTaiko preserves it as `PlayHistory.json.corrupt-{timestamp}` and starts an empty history.
 - The legacy game-event stream remains available at `/` when the request accepts `text/event-stream`; new clients should use `/api/v1/events`.

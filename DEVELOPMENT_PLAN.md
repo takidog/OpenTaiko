@@ -29,7 +29,7 @@
 - 啟動後仍進入 `CStageTitle`，存檔、玩家側、人數與模式選擇具有動畫及狀態依賴，不能只模擬按鍵跳過。
 - `HttpEventReporter` 的 listener thread 不能直接改 `CSongMount` 或 stage；這些狀態必須在遊戲主執行緒修改。
 - 表譜 Oni 與裏譜 Edit/Ura 的 UI 流程有額外狀態。API 必須透過共用選曲服務進入遊戲，不可只寫入難度欄位。
-- 前端若可從區域網路存取，就等同可遠端控制遊戲；第一版必須預設只綁定 loopback。
+- 前端若可從區域網路存取，就等同可遠端控制遊戲；預設只綁定 loopback，使用者可明確設定 `Host=0.0.0.0` 開放可信任區網。
 
 ## 3. 產品行為決策
 
@@ -48,7 +48,7 @@
 - `EnableNetworkConnectivityCheck=false` 時不建立 ping task，也不顯示錯誤的連線狀態提示。
 - `EnableDiscordRpc=false` 時完全不初始化 Discord client。
 - 本機 API 是使用者主動開啟的功能，不受 `EnableNetworkConnectivityCheck` 影響。
-- API 預設 `127.0.0.1`，不接受任意 LAN bind；LAN 控制與 token 驗證留待後續版本。
+- API 預設 `127.0.0.1`；設定 `Host=0.0.0.0` 時綁定所有網路介面，依需求不加入 token 或配對驗證，且文件必須警告只可用於可信任私人網路。
 
 ### 3.3 「播放歌曲」定義
 
@@ -138,7 +138,7 @@ WebUI/
 
 ## 6. HTTP API v1
 
-Base URL：`http://127.0.0.1:{port}/api/v1`
+Base URL：本機為 `http://127.0.0.1:{port}/api/v1`；區網模式為 `http://<遊戲電腦區網 IP>:{port}/api/v1`。
 
 所有 JSON 使用 UTF-8。成功格式可直接回傳資源；錯誤統一為：
 
