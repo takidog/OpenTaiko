@@ -106,12 +106,13 @@ internal sealed class SongCatalogSnapshot {
 		}
 
 		IReadOnlyDictionary<string, string> titles = node.ldTitle.GetAllStringsWithLanguageCodes();
+		string genre = string.IsNullOrWhiteSpace(node.songGenre) ? "OTHER" : node.songGenre.Trim();
 		return new SongDto(
 			node.tGetUniqueId(),
 			node.ldTitle.GetString(titles.Values.FirstOrDefault() ?? node.tGetUniqueId()),
 			titles,
 			node.ldSubtitle.GetString(node.ldSubtitle.GetAllStrings().FirstOrDefault() ?? string.Empty),
-			node.songGenre,
+			genre,
 			node.strMaker,
 			node.strBreadcrumbs,
 			Array.AsReadOnly(difficulties.ToArray()),

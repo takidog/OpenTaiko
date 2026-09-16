@@ -96,6 +96,22 @@ public sealed class SongCatalogSnapshotTests {
 		}
 	}
 
+	[Fact]
+	public void BlankGenresAreExposedAsOther() {
+		string uniqueIdPath = Path.Combine(Path.GetTempPath(), $"song-id-{Guid.NewGuid():N}.json");
+		try {
+			CSongListNode node = SongNode(uniqueIdPath, "no-genre", "Unsorted", "   ", 5, Difficulty.Normal);
+			SongCatalogSnapshot snapshot = SongCatalogSnapshot.FromSongNodes(new[] { node });
+
+			SongDto song = Assert.IsType<SongDto>(snapshot.GetSong("no-genre"));
+			Assert.Equal("OTHER", song.Genre);
+			Assert.Contains("OTHER", snapshot.GetGenres());
+			Assert.Single(snapshot.Search(new SongQuery(null, "OTHER", null, null, null, 1, 10)).Items);
+		} finally {
+			File.Delete(uniqueIdPath);
+		}
+	}
+
 	private static CSongListNode SongNode(
 		string uniqueIdPath,
 		string id,

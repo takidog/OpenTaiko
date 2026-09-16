@@ -2039,6 +2039,10 @@ internal class OpenTaiko : Game {
 					CSongDict.tGetSongNodesSnapshot(),
 					id => Favorites?.tIsFavorite(id) == true);
 				api.ReplaceCatalog(snapshot);
+				HttpEventReporter?.ReportRemoteControlEvent("catalog", new {
+					ready = true,
+					songCount = snapshot.Count,
+				});
 				this.remoteCatalogSongCount = songCount;
 				this.remoteCatalogSaveFile = SaveFile;
 			}

@@ -138,10 +138,11 @@ internal class CSongs管理 {
 					if (listSongsDB.TryGetValue(filePath + hash, out CSongListNode value)) {
 						this.n検索されたスコア数++;
 						listノードリスト.Add(value);
-						CSongDict.tAddSongNode(value.uniqueId, value);
 						value.rParentNode = node親;
 
 						if (value.rParentNode != null) {
+							if (string.IsNullOrWhiteSpace(value.songGenre)) value.songGenre = value.rParentNode.songGenre;
+							if (string.IsNullOrWhiteSpace(value.songGenrePanel)) value.songGenrePanel = value.rParentNode.songGenre;
 							value.strScenePresets = value.rParentNode.strScenePresets;
 							if (value.rParentNode.IsChangedForeColor) {
 								value.ForeColor = value.rParentNode.ForeColor;
@@ -172,6 +173,7 @@ internal class CSongs管理 {
 								value.isChangedBoxChara = true;
 							}
 						}
+						CSongDict.tAddSongNode(value.uniqueId, value);
 
 						this.n検索された曲ノード数++;
 					} else {
