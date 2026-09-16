@@ -24,6 +24,20 @@
       </div>
     </section>
 
+    <section id="game-session" class="game-session card" hidden aria-live="polite">
+      <div class="session-copy">
+        <div class="session-heading"><span id="playback-status" class="pill">遊戲狀態</span><strong id="playing-song">—</strong></div>
+        <span id="playing-difficulty" class="session-detail">—</span>
+        <div class="progress-track" role="progressbar" aria-label="歌曲進度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="game-progress"></span></div>
+        <div class="session-time"><span id="elapsed-time">0:00</span><span id="duration-time">0:00</span></div>
+        <p id="session-hint" class="session-hint"></p>
+      </div>
+      <div id="game-controls" class="game-controls">
+        <button id="game-retry" type="button" class="large-control secondary">重試</button>
+        <button id="game-exit" type="button" class="large-control danger">退出並回到選歌</button>
+      </div>
+    </section>
+
     <nav class="tabs" aria-label="主要功能">
       <button class="tab active" data-tab="catalog-panel">選取歌曲</button>
       <button class="tab" data-tab="playlist-panel">自選播放清單 <span id="playlist-count">0</span></button>

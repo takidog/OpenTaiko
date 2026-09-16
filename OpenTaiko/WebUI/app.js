@@ -1,5 +1,5 @@
 const api = "/api/v1";
-const ids = ["connection","stage","current-song","players","song-count","playlist-count","query","genre","difficulty","min-level","max-level","favorite-only","songs","playlist","playlist-none","playlist-empty","playlist-select","playlist-create","playlist-rename","playlist-delete","playlist-export","playlist-import","playlist-dialog","playlist-dialog-song","playlist-dialog-options","playlist-dialog-create","history","error","load-more","filters","toast","web-audio","web-preview-title"];
+const ids = ["connection","stage","current-song","players","game-session","playback-status","playing-song","playing-difficulty","game-progress","elapsed-time","duration-time","session-hint","game-controls","game-retry","game-exit","song-count","playlist-count","query","genre","difficulty","min-level","max-level","favorite-only","songs","playlist","playlist-none","playlist-empty","playlist-select","playlist-create","playlist-rename","playlist-delete","playlist-export","playlist-import","playlist-dialog","playlist-dialog-song","playlist-dialog-options","playlist-dialog-create","history","error","load-more","filters","toast","web-audio","web-preview-title"];
 const ui = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
 let page = 1, total = 0, loading = false, debounce, toastTimer, activePlaylistId = null, dialogSong = null;
 let playlists = [];
@@ -29,9 +29,35 @@ function playlistNamesFor(songId) { return playlists.filter(playlist => playlist
 
 async function refreshState() {
   try {
-    const state = await request("/state"); setOnline(true); ui.stage.textContent = state.stage; ui.players.textContent = `${state.playerCount}P`;
-    ui["current-song"].textContent = songsById.get(state.songId)?.title || state.songId || "尚未選擇";
+    renderState(await request("/state")); setOnline(true);
   } catch { setOnline(false); }
+}
+function formatTime(milliseconds) {
+  const seconds = Math.max(0, Math.floor((milliseconds || 0) / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+function renderState(state) {
+  ui.stage.textContent = state.stage; ui.players.textContent = `${state.playerCount}P`;
+  const title = state.songTitle || songsById.get(state.songId)?.title || state.songId || "尚未選擇";
+  ui["current-song"].textContent = title;
+  const visible = ["loading","playing","paused","results"].includes(state.playbackStatus);
+  ui["game-session"].hidden = !visible;
+  if (!visible) return;
+  const labels = { loading:"載入中", playing:"正在遊玩", paused:"已暫停", results:"成績結算" };
+  ui["playback-status"].textContent = labels[state.playbackStatus] || state.playbackStatus;
+  ui["playing-song"].textContent = title;
+  ui["playing-difficulty"].textContent = state.difficulty ? `${state.difficulty.toUpperCase()} · ${state.playerCount}P` : `${state.playerCount}P`;
+  const percent = Math.max(0, Math.min(100, Math.round((state.progress || 0) * 1000) / 10));
+  ui["game-progress"].style.width = `${percent}%`;
+  ui["game-progress"].parentElement.setAttribute("aria-valuenow", String(percent));
+  ui["elapsed-time"].textContent = formatTime(state.elapsedMs);
+  ui["duration-time"].textContent = formatTime(state.durationMs);
+  ui["game-controls"].hidden = state.playbackStatus === "results";
+  ui["game-exit"].disabled = !state.canExit;
+  ui["game-retry"].disabled = !state.canRetry;
+  ui["session-hint"].textContent = state.playbackStatus === "results"
+    ? "可直接在下方選取或播放另一首歌曲，不必先操作遊戲返回選歌。"
+    : (!state.canExit ? "目前正在切換畫面，控制按鈕會在安全時機啟用。" : "");
 }
 function filterParams() {
   const params = new URLSearchParams({ page, pageSize: 40 });
@@ -245,11 +271,19 @@ ui["playlist-select"].onchange = () => { activePlaylistId = ui["playlist-select"
 ui["playlist-create"].onclick = createPlaylist; ui["playlist-rename"].onclick = renamePlaylist; ui["playlist-delete"].onclick = deletePlaylist;
 ui["playlist-export"].onclick = exportPlaylists; ui["playlist-import"].onchange = () => importPlaylists(ui["playlist-import"].files[0]);
 ui["playlist-dialog-create"].onclick = async () => { const created = await createPlaylist(); if (created) renderPlaylistDialogOptions(); };
+ui["game-exit"].onclick = async () => { ui["game-exit"].disabled = true; ui["game-retry"].disabled = true; await command("/gameplay/exit", {}); refreshState(); };
+ui["game-retry"].onclick = async () => { ui["game-exit"].disabled = true; ui["game-retry"].disabled = true; await command("/gameplay/retry", {}); refreshState(); };
 
 async function start() {
   try { await request("/health"); setOnline(true); await loadGenres(); await loadPlaylists(); await loadSongs(true); await Promise.all([refreshState(), loadHistory()]); }
   catch { setOnline(false); ui.error.textContent = "無法連接 OpenTaiko。請確認 RemoteControl.Enabled=1。"; ui.error.hidden = false; }
-  const events = new EventSource(`${api}/events`); events.onmessage = event => { refreshState(); try { const message = JSON.parse(event.data); if (message.type === "history") loadHistory(); } catch { /* legacy event */ } }; events.onerror = () => setOnline(false);
+  const events = new EventSource(`${api}/events`); events.onmessage = event => {
+    try {
+      const message = JSON.parse(event.data);
+      if (message.type === "state") { renderState(message.data); setOnline(true); }
+      if (message.type === "history") loadHistory();
+    } catch { refreshState(); }
+  }; events.onerror = () => setOnline(false);
   setInterval(refreshState, 3000);
 }
 start();
