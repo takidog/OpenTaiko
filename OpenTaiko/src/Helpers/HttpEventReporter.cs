@@ -29,10 +29,10 @@ internal class HttpEventReporter(
         if (this.started) return;
         try {
             this._listener = new HttpListener();
-            this._listener.Prefixes.Add($"http://{this.host}:{this.port}/");
+            this._listener.Prefixes.Add(GetListenerPrefix(this.host, this.port));
             this._listener.Start();
             this.started = true;
-            Trace.TraceInformation($"[HttpEventReporter] Listening on http://{this.host}:{this.port}/");
+            Trace.TraceInformation($"[HttpEventReporter] Listening on {GetListenerPrefix(this.host, this.port)}");
             _ = Task.Run(this.AcceptConnectionsAsync);
         } catch (Exception ex) {
             this._listener?.Close();
@@ -40,6 +40,11 @@ internal class HttpEventReporter(
             this.started = false;
             Trace.TraceError($"[HttpEventReporter] Listener error: {ex.Message}");
         }
+    }
+
+    internal static string GetListenerPrefix(string host, int port) {
+        string listenerHost = host == "0.0.0.0" ? "+" : host;
+        return $"http://{listenerHost}:{port}/";
     }
 
     private async Task AcceptConnectionsAsync() {

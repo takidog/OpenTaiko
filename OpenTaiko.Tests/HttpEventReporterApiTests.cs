@@ -6,11 +6,19 @@ namespace OpenTaiko.Tests;
 
 public sealed class HttpEventReporterApiTests {
 	[Fact]
-	public async Task ListenerServesApiResponsesOverLoopback() {
+	public void LanWildcardUsesHttpListenerAllInterfacePrefix() {
+		Assert.Equal("http://+:2354/", HttpEventReporter.GetListenerPrefix("0.0.0.0", 2354));
+		Assert.Equal("http://127.0.0.1:2354/", HttpEventReporter.GetListenerPrefix("127.0.0.1", 2354));
+	}
+
+	[Theory]
+	[InlineData("127.0.0.1")]
+	[InlineData("0.0.0.0")]
+	public async Task ListenerServesApiResponsesOverLoopback(string host) {
 		string historyPath = Path.Combine(Path.GetTempPath(), $"opentaiko-http-{Guid.NewGuid():N}.json");
 		int port = GetAvailablePort();
 		GameRemoteControlApi api = new("transport-test", new RemoteCommandQueue(), new PlayHistoryService(historyPath));
-		HttpEventReporter reporter = new("127.0.0.1", port, new ApiRouter(api));
+		HttpEventReporter reporter = new(host, port, new ApiRouter(api));
 		try {
 			reporter.StartListening();
 			Assert.True(reporter.started);

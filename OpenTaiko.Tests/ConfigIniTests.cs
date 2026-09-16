@@ -64,7 +64,7 @@ public sealed class ConfigIniTests {
 			PlayerMode=3P
 			DefaultPlayerSide=middle
 			[RemoteControl]
-			Host=0.0.0.0
+			Host=example.com
 			Port=0
 			[PlayHistory]
 			MaxEntries=101
@@ -76,6 +76,17 @@ public sealed class ConfigIniTests {
 		Assert.Equal("127.0.0.1", config.RemoteControlHost);
 		Assert.Equal(2354, config.RemoteControlPort);
 		Assert.Equal(100, config.PlayHistoryMaxEntries);
+	}
+
+	[Fact]
+	public void LanWildcardHostIsAcceptedExplicitly() {
+		CConfigIni config = new();
+		Load(config, """
+			[RemoteControl]
+			Host=0.0.0.0
+			""");
+
+		Assert.Equal("0.0.0.0", config.RemoteControlHost);
 	}
 
 	[Fact]
@@ -91,6 +102,7 @@ public sealed class ConfigIniTests {
 				EnableNetworkConnectivityCheck = false,
 				EnableDiscordRpc = false,
 				RemoteControlEnabled = true,
+				RemoteControlHost = "0.0.0.0",
 				RemoteControlPort = 4321,
 				ServeWebUI = false,
 				OpenWebUIOnStartup = true,
@@ -108,6 +120,7 @@ public sealed class ConfigIniTests {
 			Assert.False(loaded.EnableNetworkConnectivityCheck);
 			Assert.False(loaded.EnableDiscordRpc);
 			Assert.True(loaded.RemoteControlEnabled);
+			Assert.Equal("0.0.0.0", loaded.RemoteControlHost);
 			Assert.Equal(4321, loaded.RemoteControlPort);
 			Assert.False(loaded.ServeWebUI);
 			Assert.True(loaded.OpenWebUIOnStartup);

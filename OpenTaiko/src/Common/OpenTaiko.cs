@@ -1905,8 +1905,8 @@ internal class OpenTaiko : Game {
 		}
 		#endregion
 
-		// Set up the loopback-only HTTP server. When remote control is enabled it also
-		// carries the legacy event stream at the root path for compatibility.
+		// Set up the HTTP server. Remote control may opt in to all-interface LAN binding;
+		// the legacy event stream remains loopback-only when remote control is disabled.
 		int httpPort = ConfigIni.RemoteControlEnabled
 			? ConfigIni.RemoteControlPort
 			: ConfigIni.nGameEventBroadcastingPort;
@@ -1916,7 +1916,10 @@ internal class OpenTaiko : Game {
 		StaticFileHandler? staticFiles = ConfigIni.RemoteControlEnabled && ConfigIni.ServeWebUI
 			? new StaticFileHandler(Path.Combine(strEXEのあるフォルダ, "WebUI"))
 			: null;
-		OpenTaiko.HttpEventReporter = new HttpEventReporter("127.0.0.1", httpPort, apiRouter, staticFiles);
+		string httpHost = ConfigIni.RemoteControlEnabled
+			? ConfigIni.RemoteControlHost
+			: "127.0.0.1";
+		OpenTaiko.HttpEventReporter = new HttpEventReporter(httpHost, httpPort, apiRouter, staticFiles);
 		if (RemoteControlApi is not null) {
 			RemoteControlApi.Commands.CommandChanged += result => HttpEventReporter?.ReportRemoteControlEvent("command", result);
 			RemoteControlApi.History.HistoryChanged += entry => HttpEventReporter?.ReportRemoteControlEvent("history", entry);

@@ -2370,9 +2370,10 @@ internal class CConfigIni : INotifyPropertyChanged {
 				this.RemoteControlEnabled = CConversion.bONorOFF(value[0]);
 				break;
 			case "Host":
-				// Remote control v1 is intentionally restricted to loopback.
 				if (value is "127.0.0.1" or "localhost") {
 					this.RemoteControlHost = "127.0.0.1";
+				} else if (value == "0.0.0.0") {
+					this.RemoteControlHost = value;
 				}
 				break;
 			case "Port":
