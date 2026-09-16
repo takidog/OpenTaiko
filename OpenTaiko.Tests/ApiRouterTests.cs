@@ -19,6 +19,9 @@ public sealed class ApiRouterTests {
 		Assert.Contains("\"songIndexReady\":true", health.BodyText);
 		Assert.Equal(200, state.StatusCode);
 		Assert.Contains("\"difficulty\":\"ura\"", state.BodyText);
+		Assert.Contains("\"playbackStatus\":\"playing\"", state.BodyText);
+		Assert.Contains("\"progress\":0.5", state.BodyText);
+		Assert.Contains("\"canRetry\":true", state.BodyText);
 	}
 
 	[Fact]
@@ -117,9 +120,15 @@ public sealed class ApiRouterTests {
 
 		ApiResponse stop = router.Route(new ApiRequest("POST", "/api/v1/preview/stop"));
 		ApiResponse restart = router.Route(new ApiRequest("POST", "/api/v1/restart"));
+		ApiResponse exit = router.Route(new ApiRequest("POST", "/api/v1/gameplay/exit"));
+		Assert.Equal(RemoteCommandType.ExitGameplay, this.api.LastCommandType);
+		ApiResponse retry = router.Route(new ApiRequest("POST", "/api/v1/gameplay/retry"));
 
 		Assert.Equal(202, stop.StatusCode);
 		Assert.Equal(202, restart.StatusCode);
+		Assert.Equal(202, exit.StatusCode);
+		Assert.Equal(202, retry.StatusCode);
+		Assert.Equal(RemoteCommandType.RetryGameplay, this.api.LastCommandType);
 	}
 
 	[Fact]
@@ -188,7 +197,9 @@ public sealed class ApiRouterTests {
 		public object? LastPayload { get; private set; }
 
 		public HealthDto GetHealth() => new("ok", "test", true);
-		public GameStateDto GetState() => new("songSelect", "song+one", ApiDifficulty.Ura, 1);
+		public GameStateDto GetState() => new(
+			"Game", "song+one", ApiDifficulty.Ura, 1,
+			"playing", "Song", 30_000, 60_000, 0.5, true, true, false);
 
 		public SongPageDto GetSongs(SongQuery query) {
 			this.LastSongQuery = query;

@@ -114,7 +114,15 @@ internal sealed record GameStateDto(
 	[property: JsonPropertyName("stage")] string Stage,
 	[property: JsonPropertyName("songId")] string? SongId,
 	[property: JsonPropertyName("difficulty")] ApiDifficulty? Difficulty,
-	[property: JsonPropertyName("playerCount")] int PlayerCount);
+	[property: JsonPropertyName("playerCount")] int PlayerCount,
+	[property: JsonPropertyName("playbackStatus")] string PlaybackStatus = "idle",
+	[property: JsonPropertyName("songTitle")] string? SongTitle = null,
+	[property: JsonPropertyName("elapsedMs")] long? ElapsedMs = null,
+	[property: JsonPropertyName("durationMs")] long? DurationMs = null,
+	[property: JsonPropertyName("progress")] double? Progress = null,
+	[property: JsonPropertyName("canExit")] bool CanExit = false,
+	[property: JsonPropertyName("canRetry")] bool CanRetry = false,
+	[property: JsonPropertyName("canSelectSong")] bool CanSelectSong = false);
 
 internal sealed record SongPageDto(
 	[property: JsonPropertyName("items")] IReadOnlyList<SongDto> Items,

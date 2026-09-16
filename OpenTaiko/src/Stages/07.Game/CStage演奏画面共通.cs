@@ -692,6 +692,14 @@ internal abstract class CStage演奏画面共通 : CStage {
 	public CCounter[] ctChipAnime;
 	public CCounter[] ctChipAnimeLag;
 	private int bgmlength = 1;
+	internal long RemoteDurationMilliseconds => Math.Max(this.bgmlength, 1);
+	internal long RemoteElapsedMilliseconds {
+		get {
+			if (OpenTaiko.TJA is null) return 0;
+			long elapsed = (long)OpenTaiko.TJA.GameTimeToTjaTime(SoundManager.PlayTimer.NowTimeMs);
+			return Math.Clamp(elapsed, 0, this.RemoteDurationMilliseconds);
+		}
+	}
 
 	protected EGameplayScreenReturnValue eフェードアウト完了時の戻り値;
 	protected readonly int[] nチャンネル0Atoパッド08 = new int[] { 1, 2, 3, 4, 5, 7, 6, 1, 8, 0, 9, 9 };

@@ -1348,6 +1348,35 @@ internal class OpenTaiko : Game {
 		this.tExecuteGarbageCollection();
 	}
 
+	internal bool TryLeaveResultsForRemoteControl() {
+		if (rCurrentStage?.eStageID != CStage.EStage.Results) return false;
+
+		// Complete history and score-side postprocessing before bypassing the normal
+		// results fade-out. tPostprocessing is idempotent for the active result.
+		stageResults.tPostprocessing();
+		TJA?.t全チップの再生停止とミキサーからの削除();
+		if (TJA is not null) {
+			TJA.DeActivate();
+			TJA.ReleaseManagedResource();
+			TJA.ReleaseUnmanagedResource();
+		}
+
+		CStage fromStage = rCurrentStage;
+		this.UnmountCurrentStage();
+		this.tExecuteGarbageCollection();
+
+		Trace.TraceInformation("----------------------");
+		Trace.TraceInformation("■ Remote return to song select menu");
+		this.MountStage(stageSongSelect);
+		rPreviousStage = fromStage;
+		rCurrentStage = stageSongSelect;
+		latestSongSelect = stageSongSelect;
+		stageSongSelect.NowSong++;
+		stageSongSelect.PrepareForImmediateRemoteCommand();
+		this.tExecuteGarbageCollection();
+		return true;
+	}
+
 	// その他
 
 	#region [ 汎用ヘルパー ]
@@ -1949,16 +1978,54 @@ internal class OpenTaiko : Game {
 		GameRemoteControlApi? api = RemoteControlApi;
 		if (api is null || ConfigIni is null) return;
 
-		CSongListNode? selected = SongMount?.rCurrentlySelectedSong;
+		CStage.EStage? stage = rCurrentStage?.eStageID;
+		bool activePlay = stage is CStage.EStage.CutScene or CStage.EStage.SongLoading or CStage.EStage.Game or CStage.EStage.Results;
+		CSongListNode? selected = activePlay ? SongMount?.rChoosenSong : SongMount?.rCurrentlySelectedSong;
 		ApiDifficulty? difficulty = null;
-		if (selected is not null && SongMount.nCurrentSongDifficulty is >= 0 and < (int)Difficulty.Total) {
-			difficulty = ApiDifficultyMapper.FromGameDifficulty((Difficulty)SongMount.nCurrentSongDifficulty);
+		int gameDifficulty = activePlay && SongMount.nChoosenSongDifficulty.Length > 0
+			? SongMount.nChoosenSongDifficulty[0]
+			: SongMount.nCurrentSongDifficulty;
+		if (selected is not null && gameDifficulty is >= 0 and < (int)Difficulty.Total) {
+			difficulty = ApiDifficultyMapper.FromGameDifficulty((Difficulty)gameDifficulty);
 		}
+
+		long? elapsedMs = null;
+		long? durationMs = null;
+		double? progress = null;
+		if (stage == CStage.EStage.Game) {
+			durationMs = stageGameScreen.RemoteDurationMilliseconds;
+			elapsedMs = (stageGameScreen.RemoteElapsedMilliseconds / 1000) * 1000;
+			progress = Math.Round(Math.Clamp(elapsedMs.Value / (double)durationMs.Value, 0, 1), 3);
+		}
+
+		string playbackStatus = stage switch {
+			CStage.EStage.CutScene or CStage.EStage.SongLoading => "loading",
+			CStage.EStage.Game when stageGameScreen.bPAUSE => "paused",
+			CStage.EStage.Game => "playing",
+			CStage.EStage.Results => "results",
+			CStage.EStage.SongSelect => "songSelect",
+			_ => "idle",
+		};
+		bool gameControlsAvailable = stage == CStage.EStage.Game
+			&& stageGameScreen.ePhaseID == CStage.EPhase.Common_NORMAL;
+		bool canRetry = gameControlsAvailable && gameDifficulty != (int)Difficulty.Dan;
+		bool canSelectSong = (stage == CStage.EStage.SongSelect
+			&& stageSongSelect.ePhaseID == CStage.EPhase.Common_NORMAL)
+			|| stage == CStage.EStage.Results;
+		string? songId = selected?.tGetUniqueId();
 		GameStateDto state = new(
-			rCurrentStage?.eStageID.ToString() ?? "None",
-			selected?.tGetUniqueId(),
+			stage?.ToString() ?? "None",
+			songId,
 			difficulty,
-			ConfigIni.nPlayerCount);
+			ConfigIni.nPlayerCount,
+			playbackStatus,
+			songId is null ? null : api.GetSong(songId)?.Title,
+			elapsedMs,
+			durationMs,
+			progress,
+			gameControlsAvailable,
+			canRetry,
+			canSelectSong);
 		api.UpdateState(state);
 		if (state != this.lastRemoteState) {
 			HttpEventReporter?.ReportRemoteControlEvent("state", state);
@@ -2024,6 +2091,12 @@ internal class OpenTaiko : Game {
 			["cleared"] = System.Text.Json.JsonSerializer.SerializeToElement(cleared, RemoteControlJson.Options),
 		};
 		RemoteControlApi.History.Complete(historyId, cleared.Any(value => value) ? "cleared" : "failed", result);
+		CurrentPlayHistoryId = null;
+	}
+
+	internal static void AbortPlayHistory() {
+		if (RemoteControlApi is null || CurrentPlayHistoryId is not Guid historyId) return;
+		RemoteControlApi.History.Complete(historyId, "aborted");
 		CurrentPlayHistoryId = null;
 	}
 

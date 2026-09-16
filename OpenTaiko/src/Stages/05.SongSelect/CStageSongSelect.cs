@@ -289,6 +289,16 @@ internal class CStageSongSelect : CStage {
 		this.actSongList.Refresh(cs, bRemakeSongTitleBar);
 	}
 
+	internal void PrepareForImmediateRemoteCommand() {
+		// Remote commands execute before the first Draw call. Initialize the fields
+		// normally prepared there and skip the results fade-in so selection/play can
+		// safely continue in the same game-loop iteration.
+		this.ct登場時アニメ用共通 = new CCounter(0, 100, 3, OpenTaiko.Timer);
+		this.tNotifySelectedSongChange();
+		base.IsFirstDraw = false;
+		base.ePhaseID = CStage.EPhase.Common_NORMAL;
+	}
+
 	public override void Activate() {
 		Trace.TraceInformation("選曲ステージを活性化します。");
 		Trace.Indent();

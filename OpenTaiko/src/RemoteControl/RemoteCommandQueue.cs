@@ -11,6 +11,8 @@ internal enum RemoteCommandType {
 	StopPreview,
 	Restart,
 	SetFavorite,
+	ExitGameplay,
+	RetryGameplay,
 }
 
 internal enum RemoteCommandStatus {

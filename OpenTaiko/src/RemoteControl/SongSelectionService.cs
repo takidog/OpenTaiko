@@ -13,6 +13,17 @@ internal sealed class SongSelectionService {
 	}
 
 	public RemoteCommandOutcome Execute(RemoteCommand command) {
+		if (command.Type is RemoteCommandType.ExitGameplay or RemoteCommandType.RetryGameplay) {
+			return this.ControlGameplay(command.Type);
+		}
+
+		if (OpenTaiko.rCurrentStage?.eStageID == CStage.EStage.Results
+			&& command.Type is RemoteCommandType.Select or RemoteCommandType.Play or RemoteCommandType.Restart) {
+			if (!OpenTaiko.app.TryLeaveResultsForRemoteControl()) {
+				return RemoteCommandOutcome.Reject(ApiErrorCodes.GameBusy, "The results screen is not ready to leave.");
+			}
+		}
+
 		if (OpenTaiko.rCurrentStage?.eStageID != CStage.EStage.SongSelect
 			|| OpenTaiko.stageSongSelect.ePhaseID != CStage.EPhase.Common_NORMAL) {
 			return RemoteCommandOutcome.Reject(ApiErrorCodes.GameBusy, "Commands are only accepted while song selection is idle.");
@@ -27,6 +38,21 @@ internal sealed class SongSelectionService {
 			RemoteCommandType.SetFavorite => this.SetFavorite(command.Payload.Deserialize<FavoriteRequest>(RemoteControlJson.Options)!),
 			_ => RemoteCommandOutcome.Reject(ApiErrorCodes.InvalidRequest, "Unknown command type."),
 		};
+	}
+
+	private RemoteCommandOutcome ControlGameplay(RemoteCommandType type) {
+		if (OpenTaiko.rCurrentStage?.eStageID != CStage.EStage.Game
+			|| OpenTaiko.stageGameScreen.ePhaseID != CStage.EPhase.Common_NORMAL) {
+			return RemoteCommandOutcome.Reject(ApiErrorCodes.GameBusy, "Gameplay controls are not available right now.");
+		}
+
+		if (type == RemoteCommandType.RetryGameplay) {
+			OpenTaiko.stageGameScreen.t演奏やりなおし();
+		} else {
+			OpenTaiko.AbortPlayHistory();
+			OpenTaiko.stageGameScreen.t演奏中止();
+		}
+		return RemoteCommandOutcome.Completed;
 	}
 
 	private RemoteCommandOutcome Select(SelectionRequest request) {

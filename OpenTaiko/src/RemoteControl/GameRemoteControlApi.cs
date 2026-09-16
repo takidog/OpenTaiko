@@ -76,12 +76,23 @@ internal sealed class GameRemoteControlApi : IRemoteControlApi {
 	public bool TryGetCommand(Guid commandId, out RemoteCommandResult? result) => this.commands.TryGetResult(commandId, out result);
 
 	public RemoteCommandResult Enqueue<TPayload>(RemoteCommandType type, TPayload payload) {
-		if (!this.GetState().Stage.Equals("SongSelect", StringComparison.OrdinalIgnoreCase)) {
-			throw new ApiRouteException(409, ApiErrorCodes.GameBusy, "OpenTaiko is not currently at song selection.");
+		GameStateDto currentState = this.GetState();
+		bool stageAllowed = type switch {
+			RemoteCommandType.Select or RemoteCommandType.Play or RemoteCommandType.Restart
+				=> IsStage(currentState, "SongSelect") || IsStage(currentState, "Results"),
+			RemoteCommandType.ExitGameplay => IsStage(currentState, "Game") && currentState.CanExit,
+			RemoteCommandType.RetryGameplay => IsStage(currentState, "Game") && currentState.CanRetry,
+			_ => IsStage(currentState, "SongSelect"),
+		};
+		if (!stageAllowed) {
+			throw new ApiRouteException(409, ApiErrorCodes.GameBusy, "The command is not available in the current OpenTaiko stage.");
 		}
 		this.Validate(type, payload);
 		return this.commands.Enqueue(type, payload);
 	}
+
+	private static bool IsStage(GameStateDto state, string stage)
+		=> state.Stage.Equals(stage, StringComparison.OrdinalIgnoreCase);
 
 	public void SetFavorite(string songId, bool favorite) {
 		while (true) {

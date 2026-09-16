@@ -57,6 +57,41 @@ public sealed class GameRemoteControlApiTests {
 	}
 
 	[Fact]
+	public void GameplayControlsRequireCapabilitiesPublishedByGameState() {
+		using TempDirectory temp = new();
+		GameRemoteControlApi api = new("test", new RemoteCommandQueue(), new PlayHistoryService(temp.File("history.json")));
+		ApiRouter router = new(api);
+		api.UpdateState(new GameStateDto(
+			"Game", "song", ApiDifficulty.Oni, 1,
+			PlaybackStatus: "playing", CanExit: true, CanRetry: true));
+
+		ApiResponse exit = router.Route(Post("/api/v1/gameplay/exit", "{}"));
+		ApiResponse retry = router.Route(Post("/api/v1/gameplay/retry", "{}"));
+
+		Assert.Equal(202, exit.StatusCode);
+		Assert.Equal(202, retry.StatusCode);
+	}
+
+	[Fact]
+	public void ResultsStageAcceptsSelectionAndPlayCommands() {
+		using TempDirectory temp = new();
+		RemoteCommandQueue queue = new();
+		GameRemoteControlApi api = new("test", queue, new PlayHistoryService(temp.File("history.json")));
+		api.ReplaceCatalog(new SongCatalogSnapshot(new[] { Song("song", ApiDifficulty.Oni) }));
+		api.UpdateState(new GameStateDto(
+			"Results", "song", ApiDifficulty.Oni, 1,
+			PlaybackStatus: "results", CanSelectSong: true));
+		ApiRouter router = new(api);
+
+		ApiResponse select = router.Route(Post("/api/v1/selection", """{"songId":"song","difficulty":"oni"}"""));
+		ApiResponse play = router.Route(Post("/api/v1/play", """{"songId":"song","difficulty":"oni"}"""));
+
+		Assert.Equal(202, select.StatusCode);
+		Assert.Equal(202, play.StatusCode);
+		Assert.Equal(2, queue.Snapshot().Count);
+	}
+
+	[Fact]
 	public void HistoryResponseEnrichesLegacyEntriesWithCatalogMetadata() {
 		using TempDirectory temp = new();
 		PlayHistoryService history = new(temp.File("history.json"));
