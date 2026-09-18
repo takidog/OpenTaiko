@@ -123,12 +123,14 @@ public sealed class ApiRouterTests {
 		ApiResponse exit = router.Route(new ApiRequest("POST", "/api/v1/gameplay/exit"));
 		Assert.Equal(RemoteCommandType.ExitGameplay, this.api.LastCommandType);
 		ApiResponse retry = router.Route(new ApiRequest("POST", "/api/v1/gameplay/retry"));
+		ApiResponse exitResults = router.Route(new ApiRequest("POST", "/api/v1/results/exit"));
 
 		Assert.Equal(202, stop.StatusCode);
 		Assert.Equal(202, restart.StatusCode);
 		Assert.Equal(202, exit.StatusCode);
 		Assert.Equal(202, retry.StatusCode);
-		Assert.Equal(RemoteCommandType.RetryGameplay, this.api.LastCommandType);
+		Assert.Equal(202, exitResults.StatusCode);
+		Assert.Equal(RemoteCommandType.ExitResults, this.api.LastCommandType);
 	}
 
 	[Fact]

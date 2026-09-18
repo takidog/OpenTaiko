@@ -13,12 +13,22 @@ internal sealed class SongSelectionService {
 	}
 
 	public RemoteCommandOutcome Execute(RemoteCommand command) {
+		if (command.Type == RemoteCommandType.SetFavorite) {
+			return this.SetFavorite(command.Payload.Deserialize<FavoriteRequest>(RemoteControlJson.Options)!);
+		}
+
 		if (command.Type is RemoteCommandType.ExitGameplay or RemoteCommandType.RetryGameplay) {
 			return this.ControlGameplay(command.Type);
 		}
 
+		if (command.Type == RemoteCommandType.ExitResults) {
+			return OpenTaiko.app.TryLeaveResultsForRemoteControl()
+				? RemoteCommandOutcome.Completed
+				: RemoteCommandOutcome.Reject(ApiErrorCodes.GameBusy, "OpenTaiko is not currently at the results screen.");
+		}
+
 		if (OpenTaiko.rCurrentStage?.eStageID == CStage.EStage.Results
-			&& command.Type is RemoteCommandType.Select or RemoteCommandType.Play or RemoteCommandType.Restart) {
+			&& command.Type is RemoteCommandType.Select or RemoteCommandType.Play or RemoteCommandType.Preview or RemoteCommandType.Restart) {
 			if (!OpenTaiko.app.TryLeaveResultsForRemoteControl()) {
 				return RemoteCommandOutcome.Reject(ApiErrorCodes.GameBusy, "The results screen is not ready to leave.");
 			}
@@ -35,7 +45,6 @@ internal sealed class SongSelectionService {
 			RemoteCommandType.Preview => this.Preview(command.Payload.Deserialize<PreviewRequest>(RemoteControlJson.Options)!),
 			RemoteCommandType.StopPreview => this.StopPreview(),
 			RemoteCommandType.Restart => this.Restart(command.Payload.Deserialize<RestartRequest>(RemoteControlJson.Options)!),
-			RemoteCommandType.SetFavorite => this.SetFavorite(command.Payload.Deserialize<FavoriteRequest>(RemoteControlJson.Options)!),
 			_ => RemoteCommandOutcome.Reject(ApiErrorCodes.InvalidRequest, "Unknown command type."),
 		};
 	}

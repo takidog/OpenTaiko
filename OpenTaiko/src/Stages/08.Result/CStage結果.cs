@@ -669,6 +669,7 @@ internal class CStage結果 : CStage {
 			bgmResultIn.tPlay();
 	}
 	public override void DeActivate() {
+		this.StopResultAudio();
 		OpenTaiko.tDisposeSafely(ref Background);
 
 		if (this.rResultSound != null) {
@@ -682,6 +683,14 @@ internal class CStage結果 : CStage {
 		Dan_Plate?.Dispose();
 
 		base.DeActivate();
+	}
+
+	internal void StopResultAudio() {
+		bgmResultIn.tStop();
+		bgmResultLoop.tStop();
+		OpenTaiko.Skin.bgmDanResult.tStop();
+		OpenTaiko.Skin.bgmTowerResult.tStop();
+		this.rResultSound?.tStopSound();
 	}
 	public override void CreateManagedResource() {
 		this.pfTowerText = HPrivateFastFont.tInstantiateMainFont(OpenTaiko.Skin.TowerResult_Font_TowerText);

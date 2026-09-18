@@ -73,7 +73,7 @@ public sealed class GameRemoteControlApiTests {
 	}
 
 	[Fact]
-	public void ResultsStageAcceptsSelectionAndPlayCommands() {
+	public void ResultsStageAcceptsSelectionPlayPreviewAndExitCommands() {
 		using TempDirectory temp = new();
 		RemoteCommandQueue queue = new();
 		GameRemoteControlApi api = new("test", queue, new PlayHistoryService(temp.File("history.json")));
@@ -85,10 +85,28 @@ public sealed class GameRemoteControlApiTests {
 
 		ApiResponse select = router.Route(Post("/api/v1/selection", """{"songId":"song","difficulty":"oni"}"""));
 		ApiResponse play = router.Route(Post("/api/v1/play", """{"songId":"song","difficulty":"oni"}"""));
+		ApiResponse preview = router.Route(Post("/api/v1/preview", """{"songId":"song"}"""));
+		ApiResponse exit = router.Route(Post("/api/v1/results/exit", "{}"));
 
 		Assert.Equal(202, select.StatusCode);
 		Assert.Equal(202, play.StatusCode);
-		Assert.Equal(2, queue.Snapshot().Count);
+		Assert.Equal(202, preview.StatusCode);
+		Assert.Equal(202, exit.StatusCode);
+		Assert.Equal(4, queue.Snapshot().Count);
+	}
+
+	[Theory]
+	[InlineData("Game")]
+	[InlineData("Results")]
+	public void FavoriteCommandsAreAvailableOutsideSongSelection(string stage) {
+		using TempDirectory temp = new();
+		GameRemoteControlApi api = new("test", new RemoteCommandQueue(), new PlayHistoryService(temp.File("history.json")));
+		api.ReplaceCatalog(new SongCatalogSnapshot(new[] { Song("song", ApiDifficulty.Oni) }));
+		api.UpdateState(new GameStateDto(stage, "song", ApiDifficulty.Oni, 1));
+
+		ApiResponse response = new ApiRouter(api).Route(Post("/api/v1/favorite", """{"songId":"song","favorite":true}"""));
+
+		Assert.Equal(202, response.StatusCode);
 	}
 
 	[Fact]

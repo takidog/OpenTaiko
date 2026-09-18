@@ -1354,6 +1354,7 @@ internal class OpenTaiko : Game {
 		// Complete history and score-side postprocessing before bypassing the normal
 		// results fade-out. tPostprocessing is idempotent for the active result.
 		stageResults.tPostprocessing();
+		stageResults.StopResultAudio();
 		TJA?.t全チップの再生停止とミキサーからの削除();
 		if (TJA is not null) {
 			TJA.DeActivate();
@@ -2023,7 +2024,7 @@ internal class OpenTaiko : Game {
 			elapsedMs,
 			durationMs,
 			progress,
-			gameControlsAvailable,
+			gameControlsAvailable || stage == CStage.EStage.Results,
 			canRetry,
 			canSelectSong);
 		api.UpdateState(state);

@@ -80,8 +80,12 @@ internal sealed class GameRemoteControlApi : IRemoteControlApi {
 		bool stageAllowed = type switch {
 			RemoteCommandType.Select or RemoteCommandType.Play or RemoteCommandType.Restart
 				=> IsStage(currentState, "SongSelect") || IsStage(currentState, "Results"),
+			RemoteCommandType.Preview
+				=> IsStage(currentState, "SongSelect") || IsStage(currentState, "Results"),
+			RemoteCommandType.SetFavorite => true,
 			RemoteCommandType.ExitGameplay => IsStage(currentState, "Game") && currentState.CanExit,
 			RemoteCommandType.RetryGameplay => IsStage(currentState, "Game") && currentState.CanRetry,
+			RemoteCommandType.ExitResults => IsStage(currentState, "Results"),
 			_ => IsStage(currentState, "SongSelect"),
 		};
 		if (!stageAllowed) {

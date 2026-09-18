@@ -183,6 +183,10 @@ internal sealed class ApiRouter {
 			EnsureEmptyJsonObject(request.Body);
 			return this.Enqueue(RemoteCommandType.RetryGameplay, new { });
 		}
+		if (path == "/results/exit") {
+			EnsureEmptyJsonObject(request.Body);
+			return this.Enqueue(RemoteCommandType.ExitResults, new { });
+		}
 		if (path.StartsWith("/history/", StringComparison.Ordinal) && path.EndsWith("/play", StringComparison.Ordinal)) {
 			string idText = path["/history/".Length..^"/play".Length];
 			if (!Guid.TryParse(Uri.UnescapeDataString(idText), out Guid historyId)) {

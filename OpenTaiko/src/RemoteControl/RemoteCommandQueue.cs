@@ -13,6 +13,7 @@ internal enum RemoteCommandType {
 	SetFavorite,
 	ExitGameplay,
 	RetryGameplay,
+	ExitResults,
 }
 
 internal enum RemoteCommandStatus {
