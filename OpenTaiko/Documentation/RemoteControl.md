@@ -63,6 +63,7 @@ When enabled, open `http://127.0.0.1:2354/` on the game computer. In LAN mode, o
 | POST | `/restart` | Replay the latest or specified history entry |
 | POST | `/gameplay/exit` | Safely stop the current play and return to song selection |
 | POST | `/gameplay/retry` | Restart the current chart without returning to song selection |
+| POST | `/results/exit` | Finish result persistence, stop result audio, and return to song selection |
 | POST | `/history/{historyId}/play` | Replay a specified history entry |
 | DELETE | `/playlists/{playlistId}` | Delete a playlist, including the last one |
 | DELETE | `/playlists/{playlistId}/songs/{songId}` | Remove a song from a playlist |
@@ -73,7 +74,9 @@ The quick-selection page separates the catalog, custom playlists, and recent pla
 
 POST bodies use UTF-8 `application/json`. Accepted commands return HTTP 202 with a `commandId`; poll the command endpoint or subscribe to SSE for completion. Commands return `GAME_BUSY` when they are unavailable in the current stage.
 
-`GET /state` and SSE `state` events include `playbackStatus`, song metadata, elapsed and total milliseconds, progress from 0 to 1, and `canExit`, `canRetry`, and `canSelectSong` capability flags. Gameplay progress is throttled to approximately one update per second. Selection, play, and history replay commands are also accepted on the results screen; OpenTaiko completes result/history persistence, returns to standard song selection, and then applies the requested song. Gameplay exit and retry remain restricted to safe gameplay phases.
+`GET /state` and SSE `state` events include `playbackStatus`, song metadata, elapsed and total milliseconds, progress from 0 to 1, and `canExit`, `canRetry`, and `canSelectSong` capability flags. Gameplay progress is throttled to approximately one update per second. Selection, play, game preview, and history replay commands are also accepted on the results screen; OpenTaiko completes result/history persistence, stops every result BGM/voice, returns to standard song selection, and then applies the requested action. Favorite commands remain available during gameplay and results. Gameplay exit and retry remain restricted to safe gameplay phases.
+
+The results card offers an immediate return button and a configurable automatic-return delay from 0 to 3600 seconds. A value of 0 disables automatic return. This preference is stored in the controlling browser's local storage, so different LAN devices may use different delays without modifying the game configuration.
 
 ## Troubleshooting
 
