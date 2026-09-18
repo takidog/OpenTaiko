@@ -1,11 +1,13 @@
 const api = "/api/v1";
-const ids = ["connection","stage","current-song","players","game-session","playback-status","playing-song","playing-difficulty","game-progress","elapsed-time","duration-time","session-hint","game-controls","game-retry","game-exit","song-count","playlist-count","query","genre","difficulty","min-level","max-level","favorite-only","songs","song-sentinel","playlist","playlist-none","playlist-empty","playlist-select","playlist-create","playlist-rename","playlist-delete","playlist-export","playlist-import","playlist-dialog","playlist-dialog-song","playlist-dialog-options","playlist-dialog-create","history","error","filters","toast","web-audio","web-preview-title"];
+const ids = ["connection","stage","current-song","players","game-session","playback-status","playing-song","playing-difficulty","game-progress","elapsed-time","duration-time","session-hint","game-controls","game-retry","game-exit","result-controls","result-exit","auto-return-seconds","song-count","playlist-count","query","genre","difficulty","min-level","max-level","favorite-only","songs","song-sentinel","playlist","playlist-none","playlist-empty","playlist-select","playlist-create","playlist-rename","playlist-delete","playlist-export","playlist-import","playlist-dialog","playlist-dialog-song","playlist-dialog-options","playlist-dialog-create","history","error","filters","toast","web-audio","web-preview-title"];
 const ui = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
 let page = 1, total = 0, loading = false, hasMoreSongs = true, songLoadGeneration = 0, songAbortController = null;
 let debounce, toastTimer, activePlaylistId = null, dialogSong = null, catalogReady = false, catalogRefreshPromise = null;
 let playlists = [];
 const songsById = new Map();
 const renderedSongIds = new Set();
+const autoReturnStorageKey = "opentaiko.resultsAutoReturnSeconds";
+let latestGameState = null, resultAutoReturnTimeout = null, resultCountdownInterval = null, resultAutoReturnDeadline = 0, resultExitPending = false;
 
 async function request(path, options) {
   const response = await fetch(api + path, options);
@@ -38,13 +40,53 @@ function formatTime(milliseconds) {
   const seconds = Math.max(0, Math.floor((milliseconds || 0) / 1000));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
+function readAutoReturnSeconds() {
+  try { return Math.max(0, Math.min(3600, Number.parseInt(localStorage.getItem(autoReturnStorageKey) || "0", 10) || 0)); }
+  catch { return 0; }
+}
+function clearResultAutoReturn() {
+  clearTimeout(resultAutoReturnTimeout); clearInterval(resultCountdownInterval);
+  resultAutoReturnTimeout = null; resultCountdownInterval = null; resultAutoReturnDeadline = 0;
+}
+function updateResultHint() {
+  if (latestGameState?.playbackStatus !== "results") return;
+  if (resultExitPending) { ui["session-hint"].textContent = "正在返回選歌畫面…"; return; }
+  if (resultAutoReturnDeadline) {
+    const remaining = Math.max(0, Math.ceil((resultAutoReturnDeadline - Date.now()) / 1000));
+    ui["session-hint"].textContent = `將在 ${remaining} 秒後自動返回選歌；也可以直接選取、Preview 或播放其他歌曲。`;
+  } else {
+    ui["session-hint"].textContent = "可返回選歌，或直接選取、Preview、播放另一首歌曲。";
+  }
+}
+function scheduleResultAutoReturn() {
+  clearResultAutoReturn(); resultExitPending = false;
+  if (latestGameState?.playbackStatus !== "results") return;
+  const seconds = readAutoReturnSeconds();
+  if (!seconds) { updateResultHint(); return; }
+  resultAutoReturnDeadline = Date.now() + seconds * 1000;
+  updateResultHint(); resultCountdownInterval = setInterval(updateResultHint, 250);
+  resultAutoReturnTimeout = setTimeout(() => exitResults(), seconds * 1000);
+}
+async function exitResults() {
+  if (resultExitPending || latestGameState?.playbackStatus !== "results") return false;
+  resultExitPending = true; clearResultAutoReturn(); ui["result-exit"].disabled = true; updateResultHint();
+  const succeeded = await command("/results/exit", {});
+  if (!succeeded) { resultExitPending = false; ui["result-exit"].disabled = false; updateResultHint(); }
+  await refreshState(); return succeeded;
+}
 function renderState(state) {
+  const previousPlaybackStatus = latestGameState?.playbackStatus;
+  latestGameState = state;
   ui.stage.textContent = state.stage; ui.players.textContent = `${state.playerCount}P`;
   const title = state.songTitle || songsById.get(state.songId)?.title || state.songId || "尚未選擇";
   ui["current-song"].textContent = title;
   const visible = ["loading","playing","paused","results"].includes(state.playbackStatus);
   ui["game-session"].hidden = !visible;
-  if (!visible) return;
+  if (!visible) {
+    if (previousPlaybackStatus === "results") clearResultAutoReturn();
+    resultExitPending = false;
+    return;
+  }
   const labels = { loading:"載入中", playing:"正在遊玩", paused:"已暫停", results:"成績結算" };
   ui["playback-status"].textContent = labels[state.playbackStatus] || state.playbackStatus;
   ui["playing-song"].textContent = title;
@@ -55,11 +97,17 @@ function renderState(state) {
   ui["elapsed-time"].textContent = formatTime(state.elapsedMs);
   ui["duration-time"].textContent = formatTime(state.durationMs);
   ui["game-controls"].hidden = state.playbackStatus === "results";
+  ui["result-controls"].hidden = state.playbackStatus !== "results";
   ui["game-exit"].disabled = !state.canExit;
   ui["game-retry"].disabled = !state.canRetry;
-  ui["session-hint"].textContent = state.playbackStatus === "results"
-    ? "可直接在下方選取或播放另一首歌曲，不必先操作遊戲返回選歌。"
-    : (!state.canExit ? "目前正在切換畫面，控制按鈕會在安全時機啟用。" : "");
+  ui["result-exit"].disabled = !state.canExit || resultExitPending;
+  if (state.playbackStatus === "results") {
+    if (previousPlaybackStatus !== "results") scheduleResultAutoReturn(); else updateResultHint();
+  } else {
+    if (previousPlaybackStatus === "results") clearResultAutoReturn();
+    resultExitPending = false;
+    ui["session-hint"].textContent = !state.canExit ? "目前正在切換畫面，控制按鈕會在安全時機啟用。" : "";
+  }
 }
 function filterParams() {
   const params = new URLSearchParams({ page, pageSize: 40 });
@@ -187,6 +235,9 @@ function renderFavorite(button, active) {
   button.title = active ? "移除最愛" : "加入最愛"; button.setAttribute("aria-label", button.title);
 }
 async function command(path, payload) {
+  const leavesResults = latestGameState?.playbackStatus === "results"
+    && (path === "/selection" || path === "/play" || path === "/preview" || path === "/restart" || path.startsWith("/history/"));
+  if (leavesResults) clearResultAutoReturn();
   try {
     const result = await jsonRequest("POST", path, payload); toast(`指令已送出 · ${result.commandId.slice(0,8)}`);
     for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -195,7 +246,11 @@ async function command(path, payload) {
       if (["rejected","failed"].includes(status.status)) throw new Error(status.errorMessage || "遊戲拒絕了指令");
     }
     return true;
-  } catch (error) { toast(error.message); return false; }
+  } catch (error) {
+    toast(error.message);
+    if (leavesResults && latestGameState?.playbackStatus === "results") scheduleResultAutoReturn();
+    return false;
+  }
 }
 async function playInBrowser(song) {
   try { ui["web-preview-title"].textContent = song.title; ui["web-audio"].src = api + songPath(song.id, "/audio"); await ui["web-audio"].play(); }
@@ -328,6 +383,14 @@ ui["playlist-export"].onclick = exportPlaylists; ui["playlist-import"].onchange 
 ui["playlist-dialog-create"].onclick = async () => { const created = await createPlaylist(); if (created) renderPlaylistDialogOptions(); };
 ui["game-exit"].onclick = async () => { ui["game-exit"].disabled = true; ui["game-retry"].disabled = true; await command("/gameplay/exit", {}); refreshState(); };
 ui["game-retry"].onclick = async () => { ui["game-exit"].disabled = true; ui["game-retry"].disabled = true; await command("/gameplay/retry", {}); refreshState(); };
+ui["result-exit"].onclick = exitResults;
+ui["auto-return-seconds"].value = String(readAutoReturnSeconds());
+ui["auto-return-seconds"].onchange = () => {
+  const seconds = Math.max(0, Math.min(3600, Number.parseInt(ui["auto-return-seconds"].value || "0", 10) || 0));
+  ui["auto-return-seconds"].value = String(seconds);
+  try { localStorage.setItem(autoReturnStorageKey, String(seconds)); } catch { /* Browser storage can be disabled. */ }
+  if (latestGameState?.playbackStatus === "results") scheduleResultAutoReturn();
+};
 
 async function start() {
   try {

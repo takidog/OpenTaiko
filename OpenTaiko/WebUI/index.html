@@ -36,6 +36,14 @@
         <button id="game-retry" type="button" class="large-control secondary">重試</button>
         <button id="game-exit" type="button" class="large-control danger">退出並回到選歌</button>
       </div>
+      <div id="result-controls" class="result-controls" hidden>
+        <button id="result-exit" type="button" class="large-control">返回選歌畫面</button>
+        <label class="auto-return-setting">
+          <span>自動返回秒數</span>
+          <input id="auto-return-seconds" type="number" min="0" max="3600" step="1" value="0" inputmode="numeric" aria-describedby="auto-return-help">
+          <small id="auto-return-help">0 表示關閉；設定只保存在此瀏覽器。</small>
+        </label>
+      </div>
     </section>
 
     <nav class="tabs" aria-label="主要功能">
